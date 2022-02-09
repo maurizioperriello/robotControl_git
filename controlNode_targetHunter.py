@@ -164,6 +164,7 @@ if __name__ == '__main__':
         opPos_pubTop = 'op_pose'
         opVel_pubTop = 'obstacle_op_velocity'
         resetRobot_pubTop = 'reset_robot'
+        table_pubTopic = 'table_pose'
         
         #Subscriber Topic
         op_subs = 'obstacle_op_pos'
@@ -180,11 +181,16 @@ if __name__ == '__main__':
                                 opPos_pubTop, opVel_pubTop, resetRobot_pubTop,
                                 op_subs, EEpos_subs, EEvel_subs, targetPos_subs,
                                 robot_subs, spatialPosRobotJoints_subs, selfCollisionRobot_subs,
-                                globalCollisionRobot_subs, spatialPosFinalLinks_subs)
+                                globalCollisionRobot_subs, spatialPosFinalLinks_subs,
+                                table_pubTopic)
         rate = controller.rate #non viene utilizzata
         
         reset_pos_robot = controller.start_pos_robot.copy() #posizione iniziale del robot
-        start_vel_robot = np.zeros(6) #velocità iniziale del robot      
+        start_vel_robot = np.zeros(6) #velocità iniziale del robot
+        
+        resetTablePos = [3.0,3.0,3.0,3.0]
+        startTablePos = [0.0,0.0,0.0,0.0]
+
         
         #######################
         #init DDPG stuff
@@ -195,15 +201,15 @@ if __name__ == '__main__':
                                   #  EE_alpha, EE_beta, <- inclinazione ultimo link rispetto agli assi x e y
                                   #  target_x, target_y, target_z]    
         
-        noise = 0.1
+        noise = 0.07
         #start at 0.1
         
         agent = Agent(input_dims=observation_shape, n_actions=6, noise=noise,
                       chkpt_dir='tmp/ddpg_targetHunter',
                       memory_dir='tmp/memory_searcher')
         
-        memory_file = 'tmp\score_memory_targetHunter'
-        append_data = False
+        memory_file = 'tmp/score_memory_targetHunter.csv'
+        append_data = True
         
         print('HAI CAMBIATO IL LOAD?',
               'HAI CAMBIATO IL NOISE?',
@@ -220,7 +226,7 @@ if __name__ == '__main__':
         n_games += 1 #per far si che al penultimo game si salvi la memoria (viene salvata ogn 100 episode, per non rallentare troppo il processo)
         limit_count = 3000 #numero di iterazioni massime per episode
         score_history = []
-        load_checkpoint = False #se True, carica i pesi e la memoria salvati
+        load_checkpoint = True #se True, carica i pesi e la memoria salvati
         #save_model = True
         
         #creare routine per sviluppare l'evaluation
@@ -269,9 +275,12 @@ if __name__ == '__main__':
             controller.robot_vel_publish(start_vel_robot)
             #rate.sleep()
             
+            controller.table_publish(resetTablePos)
+            #rate.sleep()
             controller.robot_pos_publish()
             #rate.sleep()
             resetCompleted = False
+            remember_iteration = True #se il sistema è bloccato, la successiva iterazione non verrà salvata
             c = 0
             #si attende che il robot torni nella posizione iniziale prima di continuare;
             #se entro 500000 iterazioni il posizionamento non è stato completato
@@ -285,6 +294,12 @@ if __name__ == '__main__':
                 c += 1
                 if(c == 500_000):
                     break;
+            if(resetCompleted):
+                remember_iteration = True
+            else:
+                remember_iteration = False
+            controller.table_publish(startTablePos)
+            #rate.sleep()
                     
             target_x = round(uniform(0.5, 1.0), 2)
             target_y = round(uniform(-0.75, 0.75), 2)
@@ -340,8 +355,9 @@ if __name__ == '__main__':
                 
                 score += reward #aggiornamento dello score dell'episode
                 
-                if( (done==1 or reward>old_reward) and select_remember):
+                #if( (done==1 or reward>old_reward) and select_remember):
                     #il salvataggio in memoria si effettua solo se il punteggio aumenta rispetto all'iterazione precedente o se si è raggiunto il target
+                if remember_iteration:
                     agent.remember(observation, action, reward, observation_, done) #salvataggio in menoria del dati necessari per il training
                 old_reward = reward
                 
@@ -362,7 +378,7 @@ if __name__ == '__main__':
                 best_score = avg_score #indicazione della migliore media raggiunta
             if not evaluate and not rospy.is_shutdown():
                 agent.save_models(i)
-            if(i%100==0):
+            if(i%100==0 and i!=0):
                 save_score(score_history, memory_file, append_data)
                 if append_data:
                     score_history = []
