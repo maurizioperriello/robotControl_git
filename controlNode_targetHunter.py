@@ -24,7 +24,7 @@ def save_score(score_history, file, append):
         with open(file, "w") as file:
             np.savetxt(file, score_history)
 
-def observe(ctrl):
+def observe_OLD(ctrl):
     #funzione per ottenere dalla classe del controller le informazioni utili
     #per conoscere l'ambiente: posizione dell'EE, velocità dell'EE
     # e posizione del target
@@ -58,6 +58,27 @@ def observe(ctrl):
             
     return obs
 
+def observe(ctrl):
+    EE_pos, EEvel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy()
+    theta_joints = np.array(ctrl.robot_pos).copy()
+    target_pos = np.array(ctrl.target_pos).copy()
+    obs = []
+    
+    for j in range(3):
+        obs.append(target_pos[j]-EE_pos[j])
+      
+    if(np.size(EEvel) == 3):
+        for i in range(3):
+            obs.append(EEvel[i])
+    else:
+        for i in range(3):
+            obs.append(0.0)
+
+    for k in range(6):
+        obs.append(theta_joints[k])
+            
+    return obs
+
 def give_reward(d_history, ctrl):
     #reward: viene dato sulla base della distanza dell'EE dal target ed è
     #sempre negativo
@@ -82,7 +103,7 @@ def give_reward(d_history, ctrl):
     for i in range(np.size(objPos)):
         d = d + (objPos[i] - EEpos[i])**2
     d = np.sqrt(d)
-    """
+
     a = 1000
     if(d<=0.5):
         a = 500
@@ -96,8 +117,8 @@ def give_reward(d_history, ctrl):
                     a = 1
 
     reward = -a*d
+
     """
-    
     a = 1000
     if(d<=0.5):
         a = 500
@@ -113,6 +134,7 @@ def give_reward(d_history, ctrl):
                 b = 0
 
     reward = - a*d - b*(abs(EE_alpha) + abs(EE_beta))
+    """
 
     d_history.append(d)
     #d_history non viene utilizzato, ma può tornare utile per visualizzare
@@ -196,12 +218,17 @@ if __name__ == '__main__':
         #init DDPG stuff
         #######################
         
-        observation_shape = (11,)  # [EE_px, EE_py, EE_pz,
+        #observation_shape = (11,)  # [EE_px, EE_py, EE_pz,
                                   #  EE_vx, EE_vy, EE_vz,
                                   #  EE_alpha, EE_beta, <- inclinazione ultimo link rispetto agli assi x e y
-                                  #  target_x, target_y, target_z]    
+                                  #  target_x, target_y, target_z]
+                                  
+        observation_shape = (12,)  # [target_x, target_y, target_z,
+                                  #  EE_vx, EE_vy, EE_vz,
+                                  #  theta_i <- posizioni angolari dei 6 giunti
+                                  #  ]    
         
-        noise = 0.07
+        noise = 0.06
         #start at 0.1
         
         agent = Agent(input_dims=observation_shape, n_actions=6, noise=noise,
@@ -355,6 +382,7 @@ if __name__ == '__main__':
                 
                 score += reward #aggiornamento dello score dell'episode
                 
+                #TODO: da sistemare la memorizzazione selettiva delle iterazioni sulla base dei reward
                 #if( (done==1 or reward>old_reward) and select_remember):
                     #il salvataggio in memoria si effettua solo se il punteggio aumenta rispetto all'iterazione precedente o se si è raggiunto il target
                 if remember_iteration:
@@ -369,6 +397,7 @@ if __name__ == '__main__':
                 
                 print(count)
                 #print(action)
+                #print(observation)
                 if(count == limit_count):
                     break;
                 
@@ -377,6 +406,7 @@ if __name__ == '__main__':
             if avg_score > best_score:
                 best_score = avg_score #indicazione della migliore media raggiunta
             if not evaluate and not rospy.is_shutdown():
+                controller.robot_vel_publish(start_vel_robot)
                 agent.save_models(i)
             if(i%100==0 and i!=0):
                 save_score(score_history, memory_file, append_data)
