@@ -13,6 +13,7 @@ from random import randint, uniform, choice
 from ddpg_classes import Agent
 from utils import pnt2line
 
+
 def debugInfo(n):
     print(f'Ciao:) - {n}')
     
@@ -218,6 +219,13 @@ if __name__ == '__main__':
         #init DDPG stuff
         #######################
         
+        append_data = True
+        load_checkpoint = True #se True, carica i pesi e la memoria salvati
+        #save_model = True
+        evaluate = False #se True, non effettua il learn né il salvataggio dei dati
+        select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni
+        
+        
         #observation_shape = (11,)  # [EE_px, EE_py, EE_pz,
                                   #  EE_vx, EE_vy, EE_vz,
                                   #  EE_alpha, EE_beta, <- inclinazione ultimo link rispetto agli assi x e y
@@ -228,7 +236,7 @@ if __name__ == '__main__':
                                   #  theta_i <- posizioni angolari dei 6 giunti
                                   #  ]    
         
-        noise = 0.06
+        noise = 0.01
         #start at 0.1
         
         agent = Agent(input_dims=observation_shape, n_actions=6, noise=noise,
@@ -236,7 +244,7 @@ if __name__ == '__main__':
                       memory_dir='tmp/memory_searcher')
         
         memory_file = 'tmp/score_memory_targetHunter.csv'
-        append_data = True
+        
         
         print('HAI CAMBIATO IL LOAD?',
               'HAI CAMBIATO IL NOISE?',
@@ -253,10 +261,8 @@ if __name__ == '__main__':
         n_games += 1 #per far si che al penultimo game si salvi la memoria (viene salvata ogn 100 episode, per non rallentare troppo il processo)
         limit_count = 3000 #numero di iterazioni massime per episode
         score_history = []
-        load_checkpoint = True #se True, carica i pesi e la memoria salvati
-        #save_model = True
         
-        #creare routine per sviluppare l'evaluation
+    
         evaluate = False #se True, non effettua il learn né il salvataggio dei dati
         
         select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni

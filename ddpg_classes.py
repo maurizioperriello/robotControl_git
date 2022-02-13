@@ -109,7 +109,8 @@ class ReplayBuffer:
     def __init__(self, max_size, input_shape, n_actions, memory_dir):
         #n_actions = number of component of action (because it's a continuous action space)
         self.mem_size = max_size #dimesione della memoria
-        self.mem_cntr = 0 #counter interno per tenere traccia del numero di elementi effettivamente salvati
+        #self.mem_cntr = 0 #counter interno per tenere traccia del numero di elementi effettivamente salvati
+        self.mem_cntr = 0
         #inizializzazione dei vettori della memoria
         self.state_memory = np.zeros((self.mem_size, *input_shape)) #vettore degli stati presenti
         self.new_state_memory = np.zeros((self.mem_size, *input_shape)) #vettore degli stati futuri
@@ -124,6 +125,8 @@ class ReplayBuffer:
         self.chkptFile_actionMemory = os.path.join(memory_dir, 'actionMemory.csv')
         self.chkptFile_rewardMemory = os.path.join(memory_dir, 'rewardMemory.csv')
         self.chkptFile_terminalMemory = os.path.join(memory_dir, 'terminalMemory.csv')
+        #si salva anche l'indice a cui si è arrivati
+        self.chkptFile_indexMemory = os.path.join(memory_dir, 'indexMemory.csv')
         
     def store_transition(self, state, action, reward, new_state, done):
         #funzione per salvare i dati ottenuti
@@ -155,18 +158,21 @@ class ReplayBuffer:
         print('Saving memory: 0%')
         with open(self.chkptFile_stateMemory, "w") as file:
             np.savetxt(file, self.state_memory)
-        print('Saving memory: 20%')
+        print('Saving memory: 16%')
         with open(self.chkptFile_actionMemory, "w") as file:    
             np.savetxt(file, self.action_memory)
-        print('Saving memory: 40%')
+        print('Saving memory: 32%')
         with open(self.chkptFile_rewardMemory, "w") as file:
             np.savetxt(file, self.reward_memory)
-        print('Saving memory: 60%')
+        print('Saving memory: 48%')
         with open(self.chkptFile_newStateMemory, "w") as file:
             np.savetxt(file, self.new_state_memory)
-        print('Saving memory: 80%')
+        print('Saving memory: 64%')
         with open(self.chkptFile_terminalMemory, "w") as file:
             np.savetxt(file, self.terminal_memory)
+        print('Saving memory: 80%')
+        with open(self.chkptFile_indexMemory, "w") as file:
+            np.savetxt(file, self.mem_cntr)
         print('Saving memory: 100%')
             
         
@@ -177,6 +183,7 @@ class ReplayBuffer:
         self.action_memory = np.genfromtxt(self.chkptFile_actionMemory)
         self.reward_memory = np.genfromtxt(self.chkptFile_rewardMemory)
         self.terminal_memory = np.genfromtxt(self.chkptFile_terminalMemory)
+        self.mem_cntr = np.genfromtxt(self.chkptFile_indexMemory)
 
 
 #CLASS AGENT
