@@ -80,7 +80,7 @@ def observe(ctrl):
             
     return obs
 
-def give_reward(d_history, ctrl):
+def give_reward_OLD(d_history, ctrl):
     #reward: viene dato sulla base della distanza dell'EE dal target ed è
     #sempre negativo
     #Il coefficiente "a" viene abbassato nel caso in cui l'EE sia in vicinanza
@@ -96,9 +96,12 @@ def give_reward(d_history, ctrl):
     objPos = np.array(ctrl.target_pos).copy()
     EEpos, EEvel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy()
     finalLinks = ctrl.finalLinks_spatialPos.copy()
+    #joints_spatialPos = ctrl.joints_spatialPos
+    
     EE_alpha = finalLinks[0][0] - finalLinks[1][0] #differenza tra le coordinate x del terzultimo link e dell'EE
     EE_beta = finalLinks[0][1] - finalLinks[1][1] #differenza tra le coordinate y del terzultimo link e dell'EE
     z_check = finalLinks[1][2] < finalLinks[0][2] #in questo modo l'EE si trova girato verso il basso
+    #x_check = joints_spatialPos[4][0] > joints_spatialPos[3][0]
     
     d = 0
     for i in range(np.size(objPos)):
@@ -111,7 +114,7 @@ def give_reward(d_history, ctrl):
         if(d<=0.3):
             a = 200
             if(EE_alpha>=-delta and EE_alpha<=delta and 
-               EE_beta>=-delta and EE_beta<=delta and z_check):
+               EE_beta>=-delta and EE_beta<=delta and z_check): #and x_check):
                 a = 50
                 if(EEvel[0]>=-speed_limit and EEvel[1]>=-speed_limit and EEvel[2]>=-speed_limit and
                    EEvel[0]<=speed_limit and EEvel[1]<=speed_limit and EEvel[2]<=speed_limit):
@@ -143,6 +146,59 @@ def give_reward(d_history, ctrl):
 
     return reward, d_history
 
+def give_reward(d_history, ctrl):
+    #reward: viene dato sulla base della distanza dell'EE dal target ed è
+    #sempre negativo
+    #Il coefficiente "a" viene abbassato nel caso in cui l'EE sia in vicinanza
+    #del target con basse velocità: questo per aiutare il robot ad arrivare in 
+    #prossimità di questo lentamente, per conseguire l'obiettivo di afferrare 
+    #l'oggetto
+    #Se EE_alpha e EE_beta sono entrambi zero, allora l'EE è allineato
+    #verticalmente col terzultimo link (vedi CoppeliaSim) e, perciò, l'ultima
+    #parte del robot è verticale
+    delta = 0.02
+    speed_limit = 0.1
+    
+    objPos = np.array(ctrl.target_pos).copy()
+    EEpos, EEvel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy()
+    finalLinks = ctrl.finalLinks_spatialPos.copy()
+    joints_spatialPos = ctrl.joints_spatialPos
+    
+    EE_alpha = finalLinks[0][0] - finalLinks[1][0] #differenza tra le coordinate x del terzultimo link e dell'EE
+    EE_beta = finalLinks[0][1] - finalLinks[1][1] #differenza tra le coordinate y del terzultimo link e dell'EE
+    z_check = finalLinks[1][2] < finalLinks[0][2] #in questo modo l'EE si trova girato verso il basso
+    x_check = joints_spatialPos[4][0] > joints_spatialPos[3][0]
+    
+    d = 0
+    for i in range(np.size(objPos)):
+        d = d + (objPos[i] - EEpos[i])**2
+    d = np.sqrt(d)
+    
+    a = 500
+    if(d<=0.5):
+        a = 200
+        if(d<=0.3):
+            a = 70
+            if(EEvel[0]>=-speed_limit and EEvel[1]>=-speed_limit and EEvel[2]>=-speed_limit and
+               EEvel[0]<=speed_limit and EEvel[1]<=speed_limit and EEvel[2]<=speed_limit):
+                a = 1
+       
+    b = 200
+    if(z_check and x_check):
+        b = 100
+        if(EE_alpha>=-delta and EE_alpha<=delta and 
+           EE_beta>=-delta and EE_beta<=delta):
+                    b = 0
+
+    reward = - a*d - b*(abs(EE_alpha) + abs(EE_beta))
+    
+
+    d_history.append(d)
+    #d_history non viene utilizzato, ma può tornare utile per visualizzare
+    #lo storico delle distanze volta per volta
+
+    return reward, d_history
+
 def check_target(ctrl):
     #funzione per controllare se il risultato è stato raggiunto o meno:
     #per farlo, bisogna arrivare in prossimità del target (sfera bianca) con
@@ -152,6 +208,8 @@ def check_target(ctrl):
     EEpos, EEvel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy() #se possibile, si effettua sempre la copia dei valori della classe controller
     objPos = np.array(ctrl.target_pos).copy()
     finalLinks = ctrl.finalLinks_spatialPos.copy()
+    joints_spatialPos = ctrl.joints_spatialPos
+    
     EE_angles = [finalLinks[0][0] - finalLinks[1][0], finalLinks[0][1] - finalLinks[1][1]]
     z_check = finalLinks[1][2] < finalLinks[0][2]
     check_bools_pos = [ objPos[i] <= EEpos[i]+0.15 and objPos[i] >= EEpos[i]-0.15 
@@ -160,9 +218,12 @@ def check_target(ctrl):
                    for i in range(3) ]
     check_angles = [ EE_angles[i]>=-delta and EE_angles[i]<=delta
                     for i in range(2) ]
+    check_EE_pos = joints_spatialPos[4][0] > joints_spatialPos[3][0] #in questo modo l'EE non è girato ma rivolto in avanti
+    
     check_bools = np.append(check_bools_pos, check_bools_vel)
     check_bools = np.append(check_bools, check_angles)
     check_bools = np.append(check_bools, z_check)
+    check_bools = np.append(check_bools, check_EE_pos)
 
     check = True
     for i in range(np.size(check_bools)):
@@ -219,9 +280,8 @@ if __name__ == '__main__':
         #init DDPG stuff
         #######################
         
-        append_data = True
-        load_checkpoint = True #se True, carica i pesi e la memoria salvati
-        #save_model = True
+        append_data = False
+        load_checkpoint = False #se True, carica i pesi e la memoria salvati
         evaluate = False #se True, non effettua il learn né il salvataggio dei dati
         select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni
         
@@ -231,12 +291,12 @@ if __name__ == '__main__':
                                   #  EE_alpha, EE_beta, <- inclinazione ultimo link rispetto agli assi x e y
                                   #  target_x, target_y, target_z]
                                   
-        observation_shape = (12,)  # [target_x, target_y, target_z,
+        observation_shape = (12,)  # [target_x-EEx, target_y-EEy, target_z-EEz,
                                   #  EE_vx, EE_vy, EE_vz,
                                   #  theta_i <- posizioni angolari dei 6 giunti
                                   #  ]    
         
-        noise = 0.01
+        noise = 0.1
         #start at 0.1
         
         agent = Agent(input_dims=observation_shape, n_actions=6, noise=noise,
@@ -261,12 +321,7 @@ if __name__ == '__main__':
         n_games += 1 #per far si che al penultimo game si salvi la memoria (viene salvata ogn 100 episode, per non rallentare troppo il processo)
         limit_count = 3000 #numero di iterazioni massime per episode
         score_history = []
-        
     
-        evaluate = False #se True, non effettua il learn né il salvataggio dei dati
-        
-        select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni
-        
         #routine di caricamento dei pesi e della memoria
         #per poter caricare i dati è necessario prima inizializzare la rete,
         #perciò si effettuano un numero di iterazioni casuali pari a batch_size
@@ -387,12 +442,18 @@ if __name__ == '__main__':
                 done = check_target(controller) #valutazione se il target è stato raggiunto o meno
                 
                 score += reward #aggiornamento dello score dell'episode
-                
-                #TODO: da sistemare la memorizzazione selettiva delle iterazioni sulla base dei reward
-                #if( (done==1 or reward>old_reward) and select_remember):
-                    #il salvataggio in memoria si effettua solo se il punteggio aumenta rispetto all'iterazione precedente o se si è raggiunto il target
+                """  
                 if remember_iteration:
                     agent.remember(observation, action, reward, observation_, done) #salvataggio in menoria del dati necessari per il training
+                """               
+                if remember_iteration:
+                    if select_remember:
+                        if(done==1 or reward>old_reward):
+                            #il salvataggio in memoria si effettua solo se il punteggio aumenta rispetto all'iterazione precedente o se si è raggiunto il target
+                            agent.remember(observation, action, reward, observation_, done)
+                    else:
+                        agent.remember(observation, action, reward, observation_, done)    
+                
                 old_reward = reward
                 
                 if not evaluate and count % 50 == 0:
