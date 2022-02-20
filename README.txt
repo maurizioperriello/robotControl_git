@@ -1,4 +1,7 @@
 CHANGELOG:
+8th COMMIT:
+	-Correzione del file "listener.py"
+
 7th COMMIT:
 	-Aggiunto file "bill_controller.py"
 

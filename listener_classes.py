@@ -31,6 +31,7 @@ targetPos_pubTop = 'sphere_pose'
 opPos_pubTop = 'op_pose'
 opVel_pubTop = 'obstacle_op_velocity'
 resetRobot_pubTop = 'reset_robot'
+table_pubTopic = 'table_pose'
 
 #Subscriber Topic
 op_subs = 'obstacle_op_pos'
@@ -50,7 +51,7 @@ class Controller:
                  opVel_pubTopic, resetRobot_pubTopic, op_subs, EEpos_subs,
                  EEvel_subs, targetPos_subs, robot_subs, spatialPosRobotJoints_subs,
                  selfCollisionRobot_subs, globalCollisionRobot_subs,
-                 spatialPosFinalLinks_subs):
+                 spatialPosFinalLinks_subs, table_pubTopic):
         
         rospy.init_node(nodeName, anonymous=True) #inizializzazione del nodo
         
@@ -71,6 +72,10 @@ class Controller:
                                                  queue_size=10)
         self.pub_reset_robot = rospy.Publisher(resetRobot_pubTopic,
                                                Bool, queue_size=10)
+        self.pub_table_pose = rospy.Publisher(table_pubTopic,
+                                              Float64MultiArray, queue_size=10)
+        
+        
         self.rate = rospy.Rate(10)
         
         #Publisher messages
@@ -91,6 +96,8 @@ class Controller:
         self.vel_operator_msg = Float64MultiArray()
         
         self.start_position_target_msg = Float64MultiArray()
+        
+        self.table_pos_msg = Float64MultiArray()
         
         #self.operator_limit = [[-0.8, 0.8], [-0.8, 0.8], [0.1, 0.8]]
         
@@ -171,7 +178,12 @@ class Controller:
     
     def robot_reset_publish(self):
         self.pub_reset_robot.publish(self.reset_robot_msg)
-        #self.rate.sleep()       
+        #self.rate.sleep()    
+        
+    def table_publish(self, pos):
+        self.table_pos_msg.data = pos
+        self.pub_table_pose.publish(self.table_pos_msg)
+        #self.rate.sleep()
     
         
     #Subscriber callback functions
