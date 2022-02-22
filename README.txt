@@ -1,4 +1,7 @@
 CHANGELOG:
+9th COMMIT:
+	-Modifica del file "controlNodes_targetHunter.py", aggiunta di altri rewards
+
 8th COMMIT:
 	-Correzione del file "listener.py"
 

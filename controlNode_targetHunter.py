@@ -80,7 +80,7 @@ def observe(ctrl):
             
     return obs
 
-def give_reward_OLD(d_history, ctrl):
+def give_reward(d_history, ctrl):
     #reward: viene dato sulla base della distanza dell'EE dal target ed è
     #sempre negativo
     #Il coefficiente "a" viene abbassato nel caso in cui l'EE sia in vicinanza
@@ -96,57 +96,74 @@ def give_reward_OLD(d_history, ctrl):
     objPos = np.array(ctrl.target_pos).copy()
     EEpos, EEvel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy()
     finalLinks = ctrl.finalLinks_spatialPos.copy()
-    #joints_spatialPos = ctrl.joints_spatialPos
+    joints_spatialPos = ctrl.joints_spatialPos
     
     EE_alpha = finalLinks[0][0] - finalLinks[1][0] #differenza tra le coordinate x del terzultimo link e dell'EE
     EE_beta = finalLinks[0][1] - finalLinks[1][1] #differenza tra le coordinate y del terzultimo link e dell'EE
+    
+    vel_check = EEvel[0]>=-speed_limit and EEvel[1]>=-speed_limit and EEvel[2]>=-speed_limit and \
+        EEvel[0]<=speed_limit and EEvel[1]<=speed_limit and EEvel[2]<=speed_limit
     z_check = finalLinks[1][2] < finalLinks[0][2] #in questo modo l'EE si trova girato verso il basso
-    #x_check = joints_spatialPos[4][0] > joints_spatialPos[3][0]
+    x_check = joints_spatialPos[4][0] > joints_spatialPos[3][0] #in questo modo l'EE è più avanti degli altri links
+    angle_check = EE_alpha>=-delta and EE_alpha<=delta and \
+               EE_beta>=-delta and EE_beta<=delta
     
     d = 0
     for i in range(np.size(objPos)):
         d = d + (objPos[i] - EEpos[i])**2
     d = np.sqrt(d)
-
+    """
     a = 1000
     if(d<=0.5):
         a = 500
         if(d<=0.3):
             a = 200
-            if(EE_alpha>=-delta and EE_alpha<=delta and 
-               EE_beta>=-delta and EE_beta<=delta and z_check): #and x_check):
+            if(angle_check and z_check and x_check):
                 a = 50
-                if(EEvel[0]>=-speed_limit and EEvel[1]>=-speed_limit and EEvel[2]>=-speed_limit and
-                   EEvel[0]<=speed_limit and EEvel[1]<=speed_limit and EEvel[2]<=speed_limit):
+                if(vel_check):
                     a = 1
-
-    reward = -a*d
-
     """
-    a = 1000
-    if(d<=0.5):
-        a = 500
-        if(d<=0.3):
-            a = 200
-            if(EEvel[0]>=-speed_limit and EEvel[1]>=-speed_limit and EEvel[2]>=-speed_limit and
-               EEvel[0]<=speed_limit and EEvel[1]<=speed_limit and EEvel[2]<=speed_limit):
+    """
+    a = 500
+    if(d<=0.55):
+        a = 200
+        if(d<=0.35):
+            a = 50
+            if(vel_check and angle_check and z_check and x_check):
                 a = 1
-       
-    b = 10
-    if(EE_alpha>=-delta and EE_alpha<=delta and 
-       EE_beta>=-delta and EE_beta<=delta and z_check):
-                b = 0
-
-    reward = - a*d - b*(abs(EE_alpha) + abs(EE_beta))
+                
+    reward = -a*d
+    
     """
-
+    #la seguente funzione ha un massimo assoluto, ma quanti altri massimi relativi?
+    #"a" forse è meglio averlo <10 e alzare "e" e "c"
+    a = 10 #questo permette di ridurre massimi locali? Probabilmente no
+    b = [ 1 if EEvel[i]>=speed_limit else 0 for i in range(3) ]
+    c = [ 7 if EE_alpha>=delta else 0, 7 if EE_beta>=delta else 0 ]
+    e = 1.2 if not x_check else 0
+    f = 1.2 if not z_check else 0
+    
+    #inizialmente:
+    #a=10, b=1, c=1, e=0.5 (f non esisteva, c'era "x_check and z_check" nella condizione di e)
+    
+    reward = - a*d - b[0]*(abs(EEvel[0])-speed_limit) - b[1]*(abs(EEvel[1])-speed_limit) - \
+        b[2]*(abs(EEvel[2])-speed_limit) - c[0]*(abs(EE_alpha)-delta) - \
+            c[1]*(abs(EE_beta)-delta) - e - f
+    
+    """
+    print('--------------------',
+          f'alpha = {EE_alpha}',
+          f'beta = {EE_beta}',
+          '--------------------', sep='\n')
+    """
+    
     d_history.append(d)
     #d_history non viene utilizzato, ma può tornare utile per visualizzare
     #lo storico delle distanze volta per volta
 
     return reward, d_history
 
-def give_reward(d_history, ctrl):
+def give_reward_OLD(d_history, ctrl):
     #reward: viene dato sulla base della distanza dell'EE dal target ed è
     #sempre negativo
     #Il coefficiente "a" viene abbassato nel caso in cui l'EE sia in vicinanza
@@ -182,7 +199,8 @@ def give_reward(d_history, ctrl):
             if(EEvel[0]>=-speed_limit and EEvel[1]>=-speed_limit and EEvel[2]>=-speed_limit and
                EEvel[0]<=speed_limit and EEvel[1]<=speed_limit and EEvel[2]<=speed_limit):
                 a = 1
-       
+    
+    #b parte da 200 e a da 500: b va aumentato?!
     b = 200
     if(z_check and x_check):
         b = 100
@@ -280,8 +298,8 @@ if __name__ == '__main__':
         #init DDPG stuff
         #######################
         
-        append_data = False
-        load_checkpoint = False #se True, carica i pesi e la memoria salvati
+        append_data = True
+        load_checkpoint = True #se True, carica i pesi e la memoria salvati
         evaluate = False #se True, non effettua il learn né il salvataggio dei dati
         select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni
         
@@ -296,7 +314,7 @@ if __name__ == '__main__':
                                   #  theta_i <- posizioni angolari dei 6 giunti
                                   #  ]    
         
-        noise = 0.1
+        noise = 0.01
         #start at 0.1
         
         agent = Agent(input_dims=observation_shape, n_actions=6, noise=noise,
