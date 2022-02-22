@@ -172,7 +172,7 @@ class ReplayBuffer:
             np.savetxt(file, self.terminal_memory)
         print('Saving memory: 80%')
         with open(self.chkptFile_indexMemory, "w") as file:
-            np.savetxt(file, self.mem_cntr)
+            np.savetxt(file, np.array(self.mem_cntr, ndmin=1))
         print('Saving memory: 100%')
             
         
@@ -183,7 +183,7 @@ class ReplayBuffer:
         self.action_memory = np.genfromtxt(self.chkptFile_actionMemory)
         self.reward_memory = np.genfromtxt(self.chkptFile_rewardMemory)
         self.terminal_memory = np.genfromtxt(self.chkptFile_terminalMemory)
-        self.mem_cntr = np.genfromtxt(self.chkptFile_indexMemory)
+        self.mem_cntr = int(np.genfromtxt(self.chkptFile_indexMemory))
 
 
 #CLASS AGENT
@@ -300,7 +300,7 @@ class Agent:
         
         self.noise_counter += 1
         if(self.noise_counter == 900_000):
-            #ogni 300 episodi si abbassa il rumore (ogni episodi sono 3000 step)
+            #ogni 300 episodi si abbassa il rumore (ogni episodio sono 3000 step)
             if(self.noise > 0):
                 self.noise -= 0.01
                 self.noise_counter = 0

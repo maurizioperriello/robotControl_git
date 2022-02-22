@@ -1,5 +1,8 @@
 CHANGELOG:
-9th COMMIT:
+1.9.1:
+	-Modifica file "ddpg_classes.py" per salvare correttamente l'indice della memoria
+
+9th COMMIT (v1.9):
 	-Modifica del file "controlNodes_targetHunter.py", aggiunta di altri rewards
 
 8th COMMIT:
