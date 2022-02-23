@@ -146,6 +146,35 @@ class Controller:
         self.finalLinks_spatialPos = np.zeros(6)
         
         
+        ###################
+        #   Bill
+        ###################
+        
+        #Publishers
+        self.vel_pub = rospy.Publisher('bill_velocity', Float64MultiArray,
+                                       queue_size=10)
+        self.reset_pub = rospy.Publisher('bill_reset', Bool,
+                                         queue_size=10)
+        
+        #Publisher Msg
+        self.vel_msg = Float64MultiArray()
+        self.vel_msg.data = np.zeros(10)
+        
+        self.reset_msg = Bool()
+        self.reset_msg.data = True
+        
+        #Subscriber
+        self.sub_spatialPose = rospy.Subscriber('bill_spatialPose',
+                                                Float64MultiArray,
+                                                self.spatialPose_callback)
+        
+        #Subscriber Data
+        self.spatialPose = np.zeros(24)
+        #la velocità è uguale a quella impostata, perciò
+        #si può recuperare direttamente dal dato impostato e 
+        #non da CoppeliaSim
+        
+        
     #Publish functions
     def robot_vel_publish(self, vel):
         self.vel_robot_msg.data = vel
@@ -246,4 +275,21 @@ class Controller:
         return self.finalLinks_spatialPos
     
     
+    ###################
+    #Bill stuff
+    ###################
     
+    #Publish functions
+    def vel_publishFun(self, v):
+        self.vel_msg.data = v
+        self.vel_pub.publish(self.vel_msg)
+        self.rate.sleep()    
+    def reset_publishFun(self):
+        self.reset_pub.publish(self.reset_msg)
+        #self.rate.sleep()
+       
+    #Callback function    
+    def spatialPose_callback(self, msg):
+        self.sub_spatialPose = [ [ msg.data[j] for j in range(3*i, 3+3*i) ]
+                                for i in range(8) ]
+        

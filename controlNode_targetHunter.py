@@ -137,11 +137,11 @@ def give_reward(d_history, ctrl):
     """
     #la seguente funzione ha un massimo assoluto, ma quanti altri massimi relativi?
     #"a" forse è meglio averlo <10 e alzare "e" e "c"
-    a = 10 #questo permette di ridurre massimi locali? Probabilmente no
-    b = [ 1 if EEvel[i]>=speed_limit else 0 for i in range(3) ]
-    c = [ 7 if EE_alpha>=delta else 0, 7 if EE_beta>=delta else 0 ]
-    e = 1.2 if not x_check else 0
-    f = 1.2 if not z_check else 0
+    a = 15 #questo permette di ridurre massimi locali? Probabilmente no
+    b = [ 2 if EEvel[i]>=speed_limit else 0 for i in range(3) ]
+    c = [ 20 if EE_alpha>=delta else 0, 20 if EE_beta>=delta else 0 ]
+    e = 2.5 if not x_check else 0
+    f = 2.5 if not z_check else 0
     
     #inizialmente:
     #a=10, b=1, c=1, e=0.5 (f non esisteva, c'era "x_check and z_check" nella condizione di e)
@@ -314,7 +314,7 @@ if __name__ == '__main__':
                                   #  theta_i <- posizioni angolari dei 6 giunti
                                   #  ]    
         
-        noise = 0.01
+        noise = 0.06
         #start at 0.1
         
         agent = Agent(input_dims=observation_shape, n_actions=6, noise=noise,

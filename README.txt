@@ -1,4 +1,7 @@
 CHANGELOG:
+1.10.1:
+	-Modifica a "listener_class.py" per includere il Bill controllor e aggiornamento del targetHunter
+
 1.10:
 	-Modifica di "Bill_controller.py" e creazione di "controlNode_BillAvoider.py"
 
