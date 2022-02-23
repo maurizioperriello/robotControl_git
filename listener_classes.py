@@ -169,7 +169,8 @@ class Controller:
                                                 self.spatialPose_callback)
         
         #Subscriber Data
-        self.spatialPose = np.zeros(24)
+        self.spatialPose = [ [ 0 for _ in range(3) ]
+                            for _ in range(8) ]
         #la velocità è uguale a quella impostata, perciò
         #si può recuperare direttamente dal dato impostato e 
         #non da CoppeliaSim

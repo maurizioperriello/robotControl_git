@@ -1,4 +1,7 @@
 CHANGELOG:
+1.10.2:
+	-piccola correzione a "listener_class.py"
+
 1.10.1:
 	-Modifica a "listener_class.py" per includere il Bill controllor e aggiornamento del targetHunter
 
