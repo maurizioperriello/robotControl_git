@@ -1,4 +1,7 @@
 CHANGELOG:
+1.10:
+	-Modifica di "Bill_controller.py" e creazione di "controlNode_BillAvoider.py"
+
 1.9.1:
 	-Modifica file "ddpg_classes.py" per salvare correttamente l'indice della memoria
 

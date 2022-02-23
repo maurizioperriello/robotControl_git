@@ -39,7 +39,17 @@ class Bill:
         #la velocità è uguale a quella impostata, perciò
         #si può recuperare direttamente dal dato impostato e 
         #non da CoppeliaSim
-        
+       
+    #Publish functions
+    def vel_publishFun(self, v):
+        self.vel_msg.data = v
+        self.vel_pub.publish(self.vel_msg)
+        self.rate.sleep()    
+    def reset_publishFun(self):
+        self.reset_pub.publish(self.reset_msg)
+        #self.rate.sleep()
+       
+    #Callback function    
     def spatialPose_callback(self, msg):
         self.sub_spatialPose = [ [ msg.data[j] for j in range(3*i, 3+3*i) ]
                                 for i in range(8) ]

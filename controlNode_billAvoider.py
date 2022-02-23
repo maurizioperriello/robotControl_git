@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Fri Dec  3 09:23:26 2021
+Created on Wed Feb 23 16:18:27 2022
 
 @author: mauri
 """
+
 
 import rospy
 from listener_classes import Controller
@@ -17,21 +18,20 @@ from utils import pnt2line
 def debugInfo(n):
     print(f'Ciao:) - {n}')
 
-def observe(ctrl):
-    joints_spatialPos = ctrl.joints_spatialPos
-    opPos = ctrl.operator_pos
-    opVel = ctrl.operator_vel
-    jointSelection = [1,2,3]
-    
+def observe(ctrl, bill):
+    theta_joints = np.array(ctrl.robot_pos).copy()
+    EE_vel = ctrl.EE_vel.copy()
+    billLimbs = np.array(bill.spatialPose).copy()
+    limbSelector = [4, 6, 7] #testa, mano destra, mano sinistra (in realtà un punto tra la mano e il gomito)
     obs = []
     
     for i in range(3):
-        obs.append(opPos[i])
+        obs.append(theta_joints[i])
     for i in range(3):
-        obs.append(opVel[i])
-    for i in jointSelection:
+        obs.append(EE_vel[i])
+    for i in limbSelector:
         for j in range(3):
-            obs.append(joints_spatialPos[i][j])
+            obs.append(billLimbs[i][j])
             
     return obs
 
@@ -64,47 +64,13 @@ def give_reward(ctrl, op_ctrl, v, oldv):
     if(max_distance_bool and mod_v > 0.3):
         reward -= 200
     
-    return reward    
-
-def check_operator_collision_OLD(ctrl):
-    #funzione per individuare se ci sono collisioni tra l'operatore (pallina verde) e il robot
-    spatialPos_joints = ctrl.joints_spatialPos.copy()
-    opPos = ctrl.operator_pos
-    min_d = 0.3 #minima distanza entro la quale si considera una collisione
-    
-    check_d = [ False for _ in range(6) ]
-    d0, _ = pnt2line(opPos, [0,0,0], spatialPos_joints[0])
-    d_max = d0
-    check_d[0] = d0 <= min_d
-    for i in range(5):
-        d, _ = pnt2line(opPos, spatialPos_joints[i], spatialPos_joints[i+1])
-        check_d[i+1] = d <= min_d
-        if(d > d_max):
-            d_max = d
-        
-    print(check_d)
-    
-    distance_bool = d_max>0.6
-    
-    return np.array(check_d).any(), distance_bool
+    return reward
 
 def check_operator_collision(ctrl, op_ctrl):
     #RIDURRE IL NUMERO DI PARAGONI (USARE index=[2,4]?)
     spatialPos_joints_robot = ctrl.joints_spatialPos.copy()
-    spatialPos_joints_op = op_ctrl.joints_spatialPos.copy()
+    point_op = op_ctrl.spatialPose.copy()
     min_d = 0.3 #minima distanza entro la quale si considera una collisione
-    point_op = []
-    index = [0, 2, 4]
-    for i in index:
-        point_op.append(spatialPos_joints_op[i])
-        midpoint = [ (spatialPos_joints_op[i][j] + spatialPos_joints_op[i+1][j])/2
-                    for j in range(3) ]
-        point_op.append(midpoint)
-        point_op.append(spatialPos_joints_op[i+1])
-        if(i != 4):
-            midpoint = [ (spatialPos_joints_op[i+1][j] + spatialPos_joints_op[i+2][j])/2
-                    for j in range(3) ]
-            point_op.append(midpoint)
         
     l = len(point_op)
     check_d = [ False for _ in range(6*l) ]
@@ -126,81 +92,13 @@ def check_operator_collision(ctrl, op_ctrl):
     distance_bool = d_max>0.6
     
     return np.array(check_d).any(), distance_bool
-
-
-def check_operator_limit(ctrl, lim, rate):
-    #funzione per controllare se l'operatore esce dai limiti spaziali imposti:
-    #se si, si impostano velocità diverse con segno opportuno per farlo rientrare
-    op_pos, op_vel = np.array(ctrl.operator_pos).copy(), \
-                        np.array(ctrl.operator_vel).copy()
-    change = False
-    if(np.size(op_vel) != 0):
-        vx = op_vel[0] if op_vel[0]!=None else 0
-        vy = op_vel[1] if op_vel[1]!=None else 0
-        vz = op_vel[2] if op_vel[2]!=None else 0
-    else:
-        vx = 0
-        vy = 0
-        vz = 0
-    if(op_pos[0]<=lim[0][0]):
-        vx = round(uniform(0.1, 0.3), 2)
-        change = True
-    elif(op_pos[0]>=lim[0][1]):
-        vx = round(uniform(-0.3, -0.1), 2)
-        change = True
-    if(op_pos[1]<=lim[1][0]):
-        vy = round(uniform(0.1, 0.3), 2)
-        change = True
-    elif(op_pos[1]>=lim[1][1]):
-        vy = round(uniform(-0.3, -0.1), 2)
-        change = True
-    if(op_pos[2]<=lim[2][0]):
-        vz = round(uniform(0.1, 0.3), 2)
-    elif(op_pos[2]>=lim[2][1]):
-        vz = round(uniform(-0.3, -0.1), 2)
-        change = True
-    
-    if(change):
-        vel = [vx, vy, vz]
-        ctrl.operator_vel_publish(vel)
-        #rate.sleep()
         
 
 if __name__ == '__main__':
     try:
         #######################
         #init ROS stuff
-        #######################
-        
-        
-        #Nome nodo
-        nodeName = 'operator_look'
-        
-        #Publisher Topic
-        robotPos_pubTop = 'topic1'
-        robotVel_pubTop = 'topic2'
-        targetPos_pubTop = 'topic3'
-        opPos_pubTop = 'topic4'
-        opVel_pubTop = 'topic5'
-        resetRobot_pubTop = 'topic6'
-        table_pubTopic = 'table_pose'
-        
-        #Subscriber Topic
-        op_subs = 'obstacle_op_pos'
-        EEpos_subs = 'ee_pose_op'
-        EEvel_subs = 'ee_velocity_op'
-        targetPos_subs = 'target_pos'
-        robot_subs = 'joints_value_op'
-        spatialPosRobotJoints_subs = 'spatialPos_joints_op'
-        selfCollisionRobot_subs = 'collision_operator'
-        globalCollisionRobot_subs = 'global_operator_collision'
-        
-        operator_looker = Controller(nodeName, robotPos_pubTop, robotVel_pubTop, targetPos_pubTop,
-                                opPos_pubTop, opVel_pubTop, resetRobot_pubTop,
-                                op_subs, EEpos_subs, EEvel_subs, targetPos_subs,
-                                robot_subs, spatialPosRobotJoints_subs, selfCollisionRobot_subs,
-                                globalCollisionRobot_subs, table_pubTopic)
-        
+        #######################        
         
         #Bill
         bill = Bill()
@@ -226,23 +124,29 @@ if __name__ == '__main__':
         spatialPosRobotJoints_subs = 'spatialPos_joints'
         selfCollisionRobot_subs = 'collision_robot'
         globalCollisionRobot_subs = 'global_robot_collision'
+        spatialPosFinalLinks_subs = 'spatialPos_finalLinks'
         
         controller = Controller(nodeName, robotPos_pubTop, robotVel_pubTop, targetPos_pubTop,
                                 opPos_pubTop, opVel_pubTop, resetRobot_pubTop,
                                 op_subs, EEpos_subs, EEvel_subs, targetPos_subs,
                                 robot_subs, spatialPosRobotJoints_subs, selfCollisionRobot_subs,
-                                globalCollisionRobot_subs, table_pubTopic)
+                                globalCollisionRobot_subs,
+                                spatialPosFinalLinks_subs, table_pubTopic)
         rate = controller.rate
         
         reset_pos_robot = controller.start_pos_robot.copy()
         start_vel_robot = np.zeros(6)
         
-        operator_limit = [[-0.7, 0.7], [-0.7, 0.7], [0.3, 0.7]]
-        
         
         #######################
         #init DDPG stuff
         #######################
+        
+        load_checkpoint = False
+        evaluate = False
+        
+        #noise start at 0.1
+        noise = 0.1
         
         observation_shape = (15,)
         #  [op_px, op_py, op_pz, op_vx, op_vy, op_vz,
@@ -251,18 +155,15 @@ if __name__ == '__main__':
         #   joint3_x, joint3_y, joint3_z,]    
         
         agent = Agent(input_dims=observation_shape, n_actions=6,
-                      fc1=600, fc2=300,
-                      chkpt_dir='tmp/ddpg_opAvoidance',
-                      memory_dir='tmp/memory_aboider')        
+                      chkpt_dir='tmp/ddpg_billAvoidance',
+                      memory_dir='tmp/memory_billAvoider', noise=noise)        
         
         best_score = 0
         n_games = 10_000
         n_games += 1
         limit_count = 8000
         score_history = []
-        load_checkpoint = False
-
-        evaluate = True
+        
         
         if load_checkpoint:
             print('Loading model ...')
@@ -289,9 +190,15 @@ if __name__ == '__main__':
             controller.robot_vel_publish(start_vel_robot)
             #rate.sleep()
             
+            bill.vel_publishFun(np.zeros(10))
+            #rate.sleep()
+            bill.reset_publishFun()
+            #rate.sleep()
+            
             controller.robot_pos_publish()
             #rate.sleep()
             resetCompleted = False
+            rememberIteration = True
             c = 0
             while(not resetCompleted):
                 r_pos = np.array(controller.robot_pos).copy()
@@ -301,23 +208,8 @@ if __name__ == '__main__':
                 c += 1
                 if(c == 500_000):
                     break;
-                
-            
-            start_pos_operator = [ round(uniform(0.5, 0.8), 2) for _ in range(3) ]
-        
-            start_vel_operator = [ round(uniform(-0.3, 0.3), 1) for _ in range(3) ] 
-            
-            controller.operator_pos_publish(start_pos_operator)
-            #rate.sleep()
-            controller.operator_vel_publish(start_vel_operator)
-            #rate.sleep()
-            
-            
-            object_position = [ round(uniform(0.5, 1.0), 2) for _ in range(2)]
-            object_position[1] = object_position[1] * choice([-1,1])
-            object_position.append(0.1)
-            controller.target_pos_publish(object_position)
-            #rate.sleep()
+            if not resetCompleted:
+                rememberIteration = False
             
             observation = observe(controller)
             
@@ -339,17 +231,17 @@ if __name__ == '__main__':
                 controller.robot_vel_publish(action)
                 #rate.sleep()
                 
-                """
+                
                 if(count % 200 == 0):
-                    operator_vel = [ round(uniform(-0.3, 0.3), 1) for _ in range(3) ]
-                    controller.operator_vel_publish(operator_vel)
+                    bill_vel = [ round(uniform(-0.2, 0.2), 2) for _ in range(10) ]
+                    bill.vel_publishFun(bill_vel)
                     #rate.sleep()
                     
-                check_operator_limit(controller, operator_limit, rate)
-                """
+                #check_operator_limit(controller, operator_limit, rate)
+                
                 
                 observation_ = observe(controller)
-                reward = give_reward(controller, operator_looker, action, old_action)
+                reward = give_reward(controller, bill, action, old_action)
                 old_action = action
 
                 done = False
@@ -382,3 +274,5 @@ if __name__ == '__main__':
         pass
     
     
+
+
