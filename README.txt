@@ -1,4 +1,7 @@
 CHANGELOG:
+2.0:
+	-Aggiunto "controlNodes_simplerSearcher.py", aggiunto l'ambiente anaconda per fare funzionare i vari files, modifiche minori
+
 1.10.2:
 	-piccola correzione a "listener_class.py"
 

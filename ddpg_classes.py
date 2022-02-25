@@ -198,8 +198,8 @@ class Agent:
         self.memory = ReplayBuffer(max_size, input_dims, n_actions, memory_dir) #memoria dell'agente
         self.batch_size = batch_size #grandezza del batch da estrarre dalla memoria per il training
         self.noise = noise #deviazione standard del rumore gaussiano da aggiungere all'azione per favorire una maggiore esplorazione dell'ambiente
-        self.max_action = [action_limit[1] for _ in range(6)] #massima azione consentita
-        self.min_action = [action_limit[0] for _ in range(6)] #minima azione consentita
+        self.max_action = [action_limit[1] for _ in range(n_actions)] #massima azione consentita
+        self.min_action = [action_limit[0] for _ in range(n_actions)] #minima azione consentita
 
         self.noise_counter = 0 #serve per valutare ogni quanto abbassare il rumore
 

@@ -82,7 +82,7 @@ class Controller:
         self.reset_robot_msg = Bool()
         self.reset_robot_msg.data = True
         
-        #self.start_pos_robot = [0, -1.57, 1.57, -6.16, 4.34, 2.36]
+        #self.start_pos_robot = [0, -1.57, 1.57, -6.16, 4.34, 2.36]        
         self.start_pos_robot = [0.0, -1.57, 1.57, -1.57, 4.71, 2.36]
         self.pos_robot_msg = JointState()
         self.pos_robot_msg.position = self.start_pos_robot
