@@ -1,4 +1,7 @@
 CHANGELOG:
+2.0.1:
+	-Aggiornamento a "listener_class.py" per far fronte alla nuova scena col nuovo Bill
+
 2.0:
 	-Aggiunto "controlNodes_simplerSearcher.py", aggiunto l'ambiente anaconda per fare funzionare i vari files, modifiche minori
 

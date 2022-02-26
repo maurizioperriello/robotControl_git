@@ -151,29 +151,47 @@ class Controller:
         ###################
         
         #Publishers
+        """
         self.vel_pub = rospy.Publisher('bill_velocity', Float64MultiArray,
                                        queue_size=10)
         self.reset_pub = rospy.Publisher('bill_reset', Bool,
                                          queue_size=10)
+        """
+        self.billHand_pub = rospy.Publisher('bill_handPose', Float64MultiArray,
+                                            queue_size=10)
         
         #Publisher Msg
+        """
         self.vel_msg = Float64MultiArray()
         self.vel_msg.data = np.zeros(10)
         
         self.reset_msg = Bool()
         self.reset_msg.data = True
+        """
+        
+        self.billHand_msg = Float64MultiArray()
+        self.billHand_msg.data = np.zeros(4)
         
         #Subscriber
+        """
         self.sub_spatialPose = rospy.Subscriber('bill_spatialPose',
                                                 Float64MultiArray,
                                                 self.spatialPose_callback)
+        """
+        self.billLimb_position_sub = rospy.Subscriber('bill_limbPosition',
+                                                  Float64MultiArray,
+                                                  self.billLimbPos_callback)
         
         #Subscriber Data
+        """
         self.spatialPose = [ [ 0 for _ in range(3) ]
                             for _ in range(8) ]
         #la velocità è uguale a quella impostata, perciò
         #si può recuperare direttamente dal dato impostato e 
         #non da CoppeliaSim
+        """
+        self.billLimb_spatialPos = [ [ 0 for _ in range(3) ]
+                                    for _ in range(8) ]
         
         
     #Publish functions
@@ -279,12 +297,12 @@ class Controller:
     ###################
     #Bill stuff
     ###################
-    
+    """
     #Publish functions
     def vel_publishFun(self, v):
         self.vel_msg.data = v
         self.vel_pub.publish(self.vel_msg)
-        self.rate.sleep()    
+        #self.rate.sleep()    
     def reset_publishFun(self):
         self.reset_pub.publish(self.reset_msg)
         #self.rate.sleep()
@@ -293,4 +311,15 @@ class Controller:
     def spatialPose_callback(self, msg):
         self.sub_spatialPose = [ [ msg.data[j] for j in range(3*i, 3+3*i) ]
                                 for i in range(8) ]
+    """
+    #Publish functions  
+    def billHandPos_publishFun(self, pos):
+        self.billHand_msg.data = pos
+        self.billHand_pub.publish(self.billHand_msg)
+        #self.rate.sleep()
+        
+    #Callback function
+    def billLimbPos_callback(self, msg):
+        self.billLimb_spatialPos = [ [ msg.data[j] for j in range(3*i, 3+3*i) ]
+                                    for i in range(8) ]
         
