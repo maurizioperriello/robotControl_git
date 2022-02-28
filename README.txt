@@ -1,4 +1,7 @@
 CHANGELOG:
+2.0.2:
+	-Aggiornamento marginale a "ddpg_class.py": ora non si salva più la memoria alla fine della prima iterazione
+
 2.0.1:
 	-Aggiornamento a "listener_class.py" per far fronte alla nuova scena col nuovo Bill
 

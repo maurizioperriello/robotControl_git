@@ -260,7 +260,7 @@ class Agent:
         self.target_critic.save_weights(self.target_critic.checkpoint_file)
         
         #SALVARE MEMORIA!!!
-        if(count % 100 == 0):
+        if(count % 100 == 0 and count != 0):
             self.memory.save_memory()
         
         """
