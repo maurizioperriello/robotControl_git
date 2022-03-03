@@ -9,7 +9,6 @@ Created on Wed Feb 23 16:18:27 2022
 
 import rospy
 from listener_classes import Controller
-from bill_controller import Bill
 import numpy as np
 from random import randint, uniform, choice
 from ddpg_classes import Agent
@@ -17,27 +16,39 @@ from utils import pnt2line
 
 def debugInfo(n):
     print(f'Ciao:) - {n}')
-
-def observe(ctrl, bill):
-    theta_joints = np.array(ctrl.robot_pos).copy()
-    EE_vel = ctrl.EE_vel.copy()
-    billLimbs = np.array(bill.spatialPose).copy()
+    
+def wait(rate, n_ds):
+    c = 0
+    while(c<n_ds):
+        rate.sleep()
+        c+=1
+    
+def readPositionFile(file):
+    position = np.genfromtxt(file)
+    return position    
+    
+def observe(ctrl):
+    #theta_joints = np.array(ctrl.robot_pos).copy()
+    EE_pos, EE_vel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy()
+    billLimbs = np.array(ctrl.billLimb_spatialPos).copy()
     limbSelector = [4, 6, 7] #testa, mano destra, mano sinistra (in realtà un punto tra la mano e il gomito)
     obs = []
     
-    for i in range(3):
-        obs.append(theta_joints[i])
-    for i in range(3):
-        obs.append(EE_vel[i])
     for i in limbSelector:
         for j in range(3):
             obs.append(billLimbs[i][j])
+    for i in range(3):
+        obs.append(EE_pos[i])
+    #for i in range(3):
+        #obs.append(theta_joints[i])
+    for i in range(3):
+        obs.append(EE_vel[i])
             
     return obs
 
-def give_reward(ctrl, op_ctrl, v, oldv):
+def give_reward(ctrl, v, oldv):
     dv_max = 0.7    
-    reward = 0 
+    a = 1 
     selfCollisionRobot = ctrl.selfCollision_bool
     globalCollisionRobot = ctrl.globalCollision_bool
     
@@ -45,7 +56,12 @@ def give_reward(ctrl, op_ctrl, v, oldv):
     for i in range(len(v)):
         mod_v = mod_v + v[i]**2
     mod_v = np.sqrt(mod_v)
-    collision, max_distance_bool = check_operator_collision(ctrl, op_ctrl)
+    collision, max_distance_bool, d_min = check_operator_collision(ctrl)
+    
+    if(d_min != 0):
+        reward = -a/d_min
+    else:
+        reward = -1_000_000 
     
     #se c'è una collisione
     if(collision):
@@ -66,33 +82,41 @@ def give_reward(ctrl, op_ctrl, v, oldv):
     
     return reward
 
-def check_operator_collision(ctrl, op_ctrl):
+
+def check_operator_collision(ctrl):
     #RIDURRE IL NUMERO DI PARAGONI (USARE index=[2,4]?)
     spatialPos_joints_robot = ctrl.joints_spatialPos.copy()
-    point_op = op_ctrl.spatialPose.copy()
-    min_d = 0.3 #minima distanza entro la quale si considera una collisione
-        
+    point_op = np.array(ctrl.billLimb_spatialPos).copy()
+    sft_d = 0.3 #minima distanza (di sicurezza) entro la quale si considera una collisione
+    limbSelector = [4, 6, 7] 
+    
+    d_min = 100 #distanza minima tra le varie distanze calcolate
+    
     l = len(point_op)
-    check_d = [ False for _ in range(6*l) ]
+    check_d = [ False for _ in range(6*l-1) ]
     d_max = 0
     for k in range(l):
-        d0, _ = pnt2line(point_op[k] , [0,0,0], spatialPos_joints_robot[0])
-        if(d0 > d_max):
-            d_max = d0
         ind = 6*k
-        check_d[ind] = d0 <= min_d
         for i in range(5):
             d, _ = pnt2line(point_op[k], spatialPos_joints_robot[i], spatialPos_joints_robot[i+1])
-            check_d[ind+i+1] = d <= min_d
+            check_d[ind+i] = d <= sft_d
             if(d > d_max):
                 d_max = d
-        
-    #print(check_d)
+            if((d < d_min) and (k in limbSelector)):
+                d_min = d
     
     distance_bool = d_max>0.6
     
-    return np.array(check_d).any(), distance_bool
-        
+    return np.array(check_d).any(), distance_bool, d_min
+
+def check_target(ctrl):
+    safety_d = 0.7 #nello script di python con entrambi gli agenti si porrà più bassa
+    done = False    
+    _, _, d_min = check_operator_collision(ctrl)
+    if(d_min >= safety_d):
+        done = True
+    return done
+
 
 if __name__ == '__main__':
     try:
@@ -100,8 +124,6 @@ if __name__ == '__main__':
         #init ROS stuff
         #######################        
         
-        #Bill
-        bill = Bill()
         
         #Nome nodo
         nodeName = 'robotControl'
@@ -136,23 +158,31 @@ if __name__ == '__main__':
         
         reset_pos_robot = controller.start_pos_robot.copy()
         start_vel_robot = np.zeros(6)
-        
+      
+        #Bill
+        #Limiti per le posizioni delle mani
+        xLim_right = [0.25, 0.8]
+        yLim_right = [-0.7, 0.0]
+        xLim_left = [0.25, 0.8]
+        yLim_left = [0.0, 0.7]
+        zLim = 1.0
         
         #######################
         #init DDPG stuff
         #######################
         
-        load_checkpoint = False
+        load_checkpoint = True
         evaluate = False
         
         #noise start at 0.1
-        noise = 0.1
+        noise = 0.01
         
         observation_shape = (15,)
-        #  [op_px, op_py, op_pz, op_vx, op_vy, op_vz,
-        #   joint1_x, joint1_y, joint1_z,
-        #   joint2_x, joint2_y, joint2_z,
-        #   joint3_x, joint3_y, joint3_z,]    
+        #  [head_x, head_y, head_z,
+        #   rxHand_x, rxHand_y, rxHand_z,
+        #   lxHand_x, lxHand_y, lxHand_z,
+        #   EE_x, EE_y, EE_z,
+        #   EE_vx, EE_vy, EE_vz]
         
         agent = Agent(input_dims=observation_shape, n_actions=6,
                       chkpt_dir='tmp/ddpg_billAvoidance',
@@ -161,10 +191,12 @@ if __name__ == '__main__':
         best_score = 0
         n_games = 10_000
         n_games += 1
-        limit_count = 8000
+        limit_count = 3000
         score_history = []
         
-        
+        position_file = 'tmp/configuration_simplerSearcher.csv'
+        startPosition = readPositionFile(position_file)
+
         if load_checkpoint:
             print('Loading model ...')
             n_steps = 0
@@ -190,10 +222,9 @@ if __name__ == '__main__':
             controller.robot_vel_publish(start_vel_robot)
             #rate.sleep()
             
-            bill.vel_publishFun(np.zeros(10))
+            controller.billHandPos_publishFun([2, 0, 0, 0]) #reset position
             #rate.sleep()
-            bill.reset_publishFun()
-            #rate.sleep()
+            wait(rate, 30)
             
             controller.robot_pos_publish()
             #rate.sleep()
@@ -210,6 +241,11 @@ if __name__ == '__main__':
                     break;
             if not resetCompleted:
                 rememberIteration = False
+                
+            startConfig = startPosition[choice(range(len(startPosition)))]
+            controller.robot_pos_publish(startConfig, False)
+            #rate.sleep()
+            wait(rate, 10)
             
             observation = observe(controller)
             
@@ -219,6 +255,7 @@ if __name__ == '__main__':
             count = 0
             
             old_action = np.zeros(6)
+            
                         
             while not done:
                 if(rospy.is_shutdown()):
@@ -231,20 +268,27 @@ if __name__ == '__main__':
                 controller.robot_vel_publish(action)
                 #rate.sleep()
                 
-                
-                if(count % 200 == 0):
-                    bill_vel = [ round(uniform(-0.2, 0.2), 2) for _ in range(10) ]
-                    bill.vel_publishFun(bill_vel)
-                    #rate.sleep()
-                    
-                #check_operator_limit(controller, operator_limit, rate)
-                
+                if(count % 200 == 0 or count == 1):
+                    hand = choice([0,1])
+                    if hand==0: 
+                        #right hand
+                        hand_pos = [round(uniform(xLim_right[0], xLim_right[1]), 2),
+                                    round(uniform(yLim_right[0], yLim_right[1]), 2),
+                                    zLim]
+                    else: 
+                        #left hand
+                        hand_pos = [round(uniform(xLim_left[0], xLim_left[1]), 2),
+                                    round(uniform(yLim_left[0], yLim_left[1]), 2),
+                                    zLim]
+                    bill_cmd = np.append(hand, hand_pos)
+                    controller.billHandPos_publishFun(bill_cmd)
+                    #rate.sleep()                
                 
                 observation_ = observe(controller)
-                reward = give_reward(controller, bill, action, old_action)
+                reward = give_reward(controller, action, old_action)
                 old_action = action
 
-                done = False
+                done = check_target(controller)
                 
                 score += reward
                 
@@ -265,6 +309,7 @@ if __name__ == '__main__':
             if avg_score > best_score:
                 best_score = avg_score
             if not evaluate and not rospy.is_shutdown():
+                controller.robot_vel_publish(start_vel_robot)
                 agent.save_models(i)
             print('Episode ', i, 'score %.1f' % score, 'avg score %.1f' % avg_score,
               '---------------')                

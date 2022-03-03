@@ -1,4 +1,7 @@
 CHANGELOG:
+2.1:
+	-Aggiornamento a "controlNode_billAvoier.py"
+
 2.0.2:
 	-Aggiornamento marginale a "ddpg_class.py": ora non si salva più la memoria alla fine della prima iterazione
 
