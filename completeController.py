@@ -340,7 +340,14 @@ if __name__ == '__main__':
                 obs_sea = observe_searcher(controller)
                 obs_av = observe_avoider(controller)
                 done = check_target(controller)
+                
+                print(count)
+                if(count == limit_count):
+                    break;
         
-        
+            print(f'End of Episode {ep}',
+                  '----------------------',
+                  sep='\n')
+            
     except rospy.ROSInterruptException:
         pass

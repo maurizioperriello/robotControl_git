@@ -1,4 +1,6 @@
 CHANGELOG:
+2.2.1:
+	-Piccole modifiche funzionali a "completeController.py"
 2.2:
 	-Prima bozza di "completeController.py"
 2.1:
