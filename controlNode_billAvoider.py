@@ -30,6 +30,7 @@ def readPositionFile(file):
 def observe(ctrl):
     #theta_joints = np.array(ctrl.robot_pos).copy()
     EE_pos, EE_vel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy()
+    target_pos = np.array(ctrl.target_pos).copy()
     billLimbs = np.array(ctrl.billLimb_spatialPos).copy()
     limbSelector = [4, 6, 7] #testa, mano destra, mano sinistra (in realtà un punto tra la mano e il gomito)
     obs = []
@@ -37,6 +38,8 @@ def observe(ctrl):
     for i in limbSelector:
         for j in range(3):
             obs.append(billLimbs[i][j])
+    for i in range(3):
+        obs.append(target_pos[i])
     for i in range(3):
         obs.append(EE_pos[i])
     #for i in range(3):
@@ -48,9 +51,17 @@ def observe(ctrl):
 
 def give_reward(ctrl, v, oldv):
     dv_max = 0.7    
-    a = 1 
+    a = 2
+    b = 2
     selfCollisionRobot = ctrl.selfCollision_bool
     globalCollisionRobot = ctrl.globalCollision_bool
+    EEpos = ctrl.EE_pos.copy()
+    target_pos = np.array(ctrl.target_pos).copy()
+    
+    d_target = 0
+    for k in range(3):
+        d_target = d_target + (target_pos[k] - EEpos[k])**2
+    d_target = np.sqrt(d_target)
     
     mod_v = 0
     for i in range(len(v)):
@@ -59,7 +70,7 @@ def give_reward(ctrl, v, oldv):
     collision, max_distance_bool, d_min = check_operator_collision(ctrl)
     
     if(d_min != 0):
-        reward = -a/d_min
+        reward = - a/d_min - b*d_target
     else:
         reward = -1_000_000 
     
@@ -76,10 +87,11 @@ def give_reward(ctrl, v, oldv):
     if(selfCollisionRobot or globalCollisionRobot):
         reward -= 300
     
+    """
     #se l'operatore è molto lontano e la velocità impostata è alta
     if(max_distance_bool and mod_v > 0.3):
         reward -= 200
-    
+    """
     return reward
 
 
@@ -87,6 +99,7 @@ def check_operator_collision(ctrl):
     #RIDURRE IL NUMERO DI PARAGONI (USARE index=[2,4]?)
     spatialPos_joints_robot = ctrl.joints_spatialPos.copy()
     point_op = np.array(ctrl.billLimb_spatialPos).copy()
+    #TODO: abbassare sft_d a 0.2?!
     sft_d = 0.3 #minima distanza (di sicurezza) entro la quale si considera una collisione
     limbSelector = [4, 6, 7] 
     
@@ -110,7 +123,7 @@ def check_operator_collision(ctrl):
     return np.array(check_d).any(), distance_bool, d_min
 
 def check_target(ctrl):
-    safety_d = 0.7 #nello script di python con entrambi gli agenti si porrà più bassa
+    safety_d = 0.65 #nello script di python con entrambi gli agenti si porrà più bassa
     done = False    
     _, _, d_min = check_operator_collision(ctrl)
     if(d_min >= safety_d):
@@ -171,16 +184,17 @@ if __name__ == '__main__':
         #init DDPG stuff
         #######################
         
-        load_checkpoint = True
+        load_checkpoint = False
         evaluate = False
         
         #noise start at 0.1
-        noise = 0.01
+        noise = 0.1
         
-        observation_shape = (15,)
+        observation_shape = (18,)
         #  [head_x, head_y, head_z,
         #   rxHand_x, rxHand_y, rxHand_z,
         #   lxHand_x, lxHand_y, lxHand_z,
+        #   target_x, target_y, target_z,
         #   EE_x, EE_y, EE_z,
         #   EE_vx, EE_vy, EE_vz]
         
@@ -247,6 +261,14 @@ if __name__ == '__main__':
             #rate.sleep()
             wait(rate, 10)
             
+            target_x = round(uniform(0.5, 1.0), 2)
+            target_y = round(uniform(-0.75, 0.75), 2)
+            target_z = 0.41
+            object_position = [target_x, target_y, target_z]
+            
+            controller.target_pos_publish(object_position)
+            #rate.sleep()
+            
             observation = observe(controller)
             
             done = False
@@ -269,6 +291,7 @@ if __name__ == '__main__':
                 #rate.sleep()
                 
                 if(count % 200 == 0 or count == 1):
+                    controller.billHandPos_publishFun([2, 0, 0, 0])
                     hand = choice([0,1])
                     if hand==0: 
                         #right hand

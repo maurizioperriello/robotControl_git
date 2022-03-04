@@ -1,10 +1,13 @@
 CHANGELOG:
+2.3:
+	-aggiornamento a "controlNode_billAvoider.py"
+
 2.2.1:
 	-Piccole modifiche funzionali a "completeController.py"
 2.2:
 	-Prima bozza di "completeController.py"
 2.1:
-	-Aggiornamento a "controlNode_billAvoier.py"
+	-Aggiornamento a "controlNode_billAvoider.py"
 
 2.0.2:
 	-Aggiornamento marginale a "ddpg_class.py": ora non si salva più la memoria alla fine della prima iterazione
