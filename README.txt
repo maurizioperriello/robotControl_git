@@ -1,4 +1,6 @@
 CHANGELOG:
+2.3.1:
+	-Riordinamento repository
 2.3:
 	-aggiornamento a "controlNode_billAvoider.py"
 
