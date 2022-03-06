@@ -5,6 +5,9 @@ FILE:
 
 
 CHANGELOG:
+2.3.3:
+	-aggiunta files CoppeliaSim
+
 2.3.2:
 	-aggiornamento a "controlNode_billAvoider.py"
 
