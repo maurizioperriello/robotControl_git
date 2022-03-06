@@ -1,4 +1,13 @@
+FILE:
+-"simplerSearcher" per la ricerca del target;
+-"billAvoider" per implementare l'allontanamento dall'operatore;
+-"completeController" per unificare i due agenti.
+
+
 CHANGELOG:
+2.3.2:
+	-aggiornamento a "controlNode_billAvoider.py"
+
 2.3.1:
 	-Riordinamento repository
 2.3:

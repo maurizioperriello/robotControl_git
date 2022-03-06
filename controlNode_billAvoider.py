@@ -28,7 +28,7 @@ def readPositionFile(file):
     return position    
     
 def observe(ctrl):
-    #theta_joints = np.array(ctrl.robot_pos).copy()
+    theta_joints = np.array(ctrl.robot_pos).copy()
     EE_pos, EE_vel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy()
     target_pos = np.array(ctrl.target_pos).copy()
     billLimbs = np.array(ctrl.billLimb_spatialPos).copy()
@@ -41,9 +41,9 @@ def observe(ctrl):
     for i in range(3):
         obs.append(target_pos[i])
     for i in range(3):
+        obs.append(theta_joints[i])
+    for i in range(3):
         obs.append(EE_pos[i])
-    #for i in range(3):
-        #obs.append(theta_joints[i])
     for i in range(3):
         obs.append(EE_vel[i])
             
@@ -51,8 +51,8 @@ def observe(ctrl):
 
 def give_reward(ctrl, v, oldv):
     dv_max = 0.7    
-    a = 2
-    b = 2
+    #a = 2
+    b = 1
     selfCollisionRobot = ctrl.selfCollision_bool
     globalCollisionRobot = ctrl.globalCollision_bool
     EEpos = ctrl.EE_pos.copy()
@@ -63,23 +63,25 @@ def give_reward(ctrl, v, oldv):
         d_target = d_target + (target_pos[k] - EEpos[k])**2
     d_target = np.sqrt(d_target)
     
+    reward = - b*d_target
+    
     mod_v = 0
     for i in range(len(v)):
         mod_v = mod_v + v[i]**2
     mod_v = np.sqrt(mod_v)
     collision, max_distance_bool, d_min = check_operator_collision(ctrl)
-    
+    """
     if(d_min != 0):
         reward = - a/d_min - b*d_target
     else:
         reward = -1_000_000 
-    
+    """
     #se c'è una collisione
     if(collision):
         reward -= 300
     
     #se c'è una variazione troppo grande di velocità
-    velCheck = [ abs(v[i]-oldv[i])>dv_max for i in range(6) ]
+    velCheck = [ abs(v[i]-oldv[i])>dv_max for i in range(3) ]
     if(np.array(velCheck).any()):
         reward -= 100
     
@@ -87,11 +89,11 @@ def give_reward(ctrl, v, oldv):
     if(selfCollisionRobot or globalCollisionRobot):
         reward -= 300
     
-    """
+    
     #se l'operatore è molto lontano e la velocità impostata è alta
     if(max_distance_bool and mod_v > 0.3):
         reward -= 200
-    """
+    
     return reward
 
 
@@ -99,8 +101,7 @@ def check_operator_collision(ctrl):
     #RIDURRE IL NUMERO DI PARAGONI (USARE index=[2,4]?)
     spatialPos_joints_robot = ctrl.joints_spatialPos.copy()
     point_op = np.array(ctrl.billLimb_spatialPos).copy()
-    #TODO: abbassare sft_d a 0.2?!
-    sft_d = 0.3 #minima distanza (di sicurezza) entro la quale si considera una collisione
+    sft_d = 0.2 #minima distanza (di sicurezza) entro la quale si considera una collisione
     limbSelector = [4, 6, 7] 
     
     d_min = 100 #distanza minima tra le varie distanze calcolate
@@ -129,6 +130,30 @@ def check_target(ctrl):
     if(d_min >= safety_d):
         done = True
     return done
+
+def findV4(ctrl):
+    #utilizzare l'orientamento dell'EE fornito dall'apposita funzione su CoppeliaSim
+    k = 30 #si parte da 10, funziona ma è lento
+    finalLinks = ctrl.finalLinks_spatialPos.copy()
+    EE_alpha = finalLinks[0][0] - finalLinks[1][0] #differenza tra le coordinate x del terzultimo link e dell'EE
+    EE_beta = finalLinks[0][1] - finalLinks[1][1]
+    z_check = finalLinks[1][2] < finalLinks[0][2]
+    d = np.sqrt(EE_alpha**2 + EE_beta**2)
+    d1r = 1 if finalLinks[0][0]>finalLinks[1][0] else 0 #perché "dir" è meglio non usarlo
+    v4 = k * d * (-1)**d1r if z_check else 0.7
+    return v4
+
+def findV5(ctrl):
+    #utilizzare l'orientamento dell'EE fornito dall'apposita funzione su CoppeliaSim
+    k = 30
+    finalLinks = ctrl.finalLinks_spatialPos.copy()
+    EE_alpha = finalLinks[0][0] - finalLinks[1][0] #differenza tra le coordinate x del terzultimo link e dell'EE
+    EE_beta = finalLinks[0][1] - finalLinks[1][1]
+    z_check = finalLinks[1][2] < finalLinks[0][2]
+    d = np.sqrt(EE_alpha**2 + EE_beta**2)
+    d1r = 0 if finalLinks[0][1]>finalLinks[1][1] else 1 #perché "dir" è meglio non usarlo
+    v5 = k * d * (-1)**d1r if z_check else 0.7
+    return v5
 
 
 if __name__ == '__main__':
@@ -184,21 +209,22 @@ if __name__ == '__main__':
         #init DDPG stuff
         #######################
         
-        load_checkpoint = False
+        load_checkpoint = True
         evaluate = False
         
         #noise start at 0.1
-        noise = 0.1
+        noise = 0.08
         
-        observation_shape = (18,)
+        observation_shape = (21,)
         #  [head_x, head_y, head_z,
         #   rxHand_x, rxHand_y, rxHand_z,
         #   lxHand_x, lxHand_y, lxHand_z,
         #   target_x, target_y, target_z,
+        #   th_joints1, th_joints2, th_joints3,
         #   EE_x, EE_y, EE_z,
         #   EE_vx, EE_vy, EE_vz]
         
-        agent = Agent(input_dims=observation_shape, n_actions=6,
+        agent = Agent(input_dims=observation_shape, n_actions=3,
                       chkpt_dir='tmp/ddpg_billAvoidance',
                       memory_dir='tmp/memory_billAvoider', noise=noise)        
         
@@ -216,11 +242,11 @@ if __name__ == '__main__':
             n_steps = 0
             while n_steps <= agent.batch_size:
                 observation = observe(controller)
-                action = [ randint(1, 10)/10 for _ in range(6) ]
+                action = [ randint(1, 10)/10 for _ in range(3) ]
                 controller.robot_vel_publish(action)
                 #rate.sleep()
                 observation_ = observe(controller)
-                reward = give_reward(controller, np.zeros(6), np.zeros(6))
+                reward = give_reward(controller, np.zeros(3), np.zeros(3))
                 done = False
                 agent.remember(observation, action, reward, observation_, done)
                 n_steps += 1
@@ -287,7 +313,12 @@ if __name__ == '__main__':
                 count += 1                
                 
                 action = agent.choose_action(observation, evaluate)
-                controller.robot_vel_publish(action)
+                v = np.zeros(6)
+                for ii in range(3):
+                    v[ii] = action[ii]
+                v[3] = findV4(controller)                
+                v[4] = findV5(controller)
+                controller.robot_vel_publish(v)
                 #rate.sleep()
                 
                 if(count % 200 == 0 or count == 1):
@@ -311,7 +342,7 @@ if __name__ == '__main__':
                 reward = give_reward(controller, action, old_action)
                 old_action = action
 
-                done = check_target(controller)
+                #done = check_target(controller)
                 
                 score += reward
                 
