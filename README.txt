@@ -1,10 +1,14 @@
 FILE:
 -"simplerSearcher" per la ricerca del target;
 -"billAvoider" per implementare l'allontanamento dall'operatore;
--"completeController" per unificare i due agenti.
+-"completeController" per unificare i due agenti;
+-La cartella "other_scripts" contiene file non più utilizzati.
 
 
 CHANGELOG:
+2.3.4:
+	-modifiche a "controlNode_billAvoider.py": si modifica il reward in modo tale da inserire una componente positiva
+
 2.3.3:
 	-aggiunta files CoppeliaSim
 
@@ -13,13 +17,16 @@ CHANGELOG:
 
 2.3.1:
 	-Riordinamento repository
+
 2.3:
 	-aggiornamento a "controlNode_billAvoider.py"
 
 2.2.1:
 	-Piccole modifiche funzionali a "completeController.py"
+
 2.2:
 	-Prima bozza di "completeController.py"
+
 2.1:
 	-Aggiornamento a "controlNode_billAvoider.py"
 

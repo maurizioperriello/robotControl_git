@@ -32,27 +32,30 @@ def observe(ctrl):
     EE_pos, EE_vel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy()
     target_pos = np.array(ctrl.target_pos).copy()
     billLimbs = np.array(ctrl.billLimb_spatialPos).copy()
-    limbSelector = [4, 6, 7] #testa, mano destra, mano sinistra (in realtà un punto tra la mano e il gomito)
+    limbSelector = [4, 6, 7] #testa, mano destra, mano sinistra
     obs = []
     
     for i in limbSelector:
         for j in range(3):
-            obs.append(billLimbs[i][j])
+            obs.append(billLimbs[i][j]-EE_pos[j])
     for i in range(3):
-        obs.append(target_pos[i])
+        obs.append(target_pos[i]-EE_pos[i])
+    """
     for i in range(3):
         obs.append(theta_joints[i])
+    """
     for i in range(3):
         obs.append(EE_pos[i])
+    
     for i in range(3):
         obs.append(EE_vel[i])
             
     return obs
 
-def give_reward(ctrl, v, oldv):
-    dv_max = 0.7    
+def give_reward_OLD(ctrl, v, old_v):
+    dv_max = 0.26  
     #a = 2
-    b = 1
+    b = 10
     selfCollisionRobot = ctrl.selfCollision_bool
     globalCollisionRobot = ctrl.globalCollision_bool
     EEpos = ctrl.EE_pos.copy()
@@ -63,7 +66,11 @@ def give_reward(ctrl, v, oldv):
         d_target = d_target + (target_pos[k] - EEpos[k])**2
     d_target = np.sqrt(d_target)
     
-    reward = - b*d_target
+    dv = [ abs(v[i]-old_v[i]) for i in range(3) ]
+    c = [ 1.5 if dv[i]>dv_max else 0 for i in range(3) ]
+    r = sum( [ x*y for (x, y) in zip(c, dv) ] )
+    
+    reward = - b*d_target - r
     
     mod_v = 0
     for i in range(len(v)):
@@ -79,12 +86,66 @@ def give_reward(ctrl, v, oldv):
     #se c'è una collisione
     if(collision):
         reward -= 300
-    
+    """
     #se c'è una variazione troppo grande di velocità
-    velCheck = [ abs(v[i]-oldv[i])>dv_max for i in range(3) ]
+    velCheck = [ abs(v[i]-old_v[i])>dv_max for i in range(3) ]
     if(np.array(velCheck).any()):
         reward -= 100
+    """
+    #se c'è una collisione individuata da CoppeliaSim
+    if(selfCollisionRobot or globalCollisionRobot):
+        reward -= 300
     
+    
+    #se l'operatore è molto lontano e la velocità impostata è alta
+    if(max_distance_bool and mod_v > 0.3):
+        reward -= 200
+    
+    return reward
+
+def give_reward(ctrl, v, old_v):
+    dv_max = 0.26  
+    #a = 2
+    b = 10
+    selfCollisionRobot = ctrl.selfCollision_bool
+    globalCollisionRobot = ctrl.globalCollision_bool
+    EEpos = ctrl.EE_pos.copy()
+    target_pos = np.array(ctrl.target_pos).copy()
+    
+    d_target = 0
+    for k in range(3):
+        d_target = d_target + (target_pos[k] - EEpos[k])**2
+    d_target = np.sqrt(d_target)
+    
+    dv = [ abs(v[i]-old_v[i]) for i in range(3) ]
+    c = [ 1 if dv[i]>dv_max else 0 for i in range(3) ]
+    r = sum( [ x*y for (x, y) in zip(c, dv) ] )
+    
+    if d_target>=1.0:
+        reward = - r
+    else:
+        reward = b*(1-d_target) - r #una componente del reward è positiva stavolta
+    
+    mod_v = 0
+    for i in range(len(v)):
+        mod_v = mod_v + v[i]**2
+    mod_v = np.sqrt(mod_v)
+    collision, max_distance_bool, d_min = check_operator_collision(ctrl)
+    """
+    if(d_min != 0):
+        reward = - a/d_min - b*d_target
+    else:
+        reward = -1_000_000 
+    """
+    #se c'è una collisione
+    if(collision):
+        reward -= 300
+    """
+    #se c'è una variazione troppo grande di velocità
+    velCheck = [ abs(v[i]-old_v[i])>dv_max for i in range(3) ]
+    if(np.array(velCheck).any()):
+        reward -= 100
+    """
     #se c'è una collisione individuata da CoppeliaSim
     if(selfCollisionRobot or globalCollisionRobot):
         reward -= 300
@@ -123,11 +184,20 @@ def check_operator_collision(ctrl):
     
     return np.array(check_d).any(), distance_bool, d_min
 
-def check_target(ctrl):
+def check_target_OLD(ctrl):
     safety_d = 0.65 #nello script di python con entrambi gli agenti si porrà più bassa
     done = False    
     _, _, d_min = check_operator_collision(ctrl)
     if(d_min >= safety_d):
+        done = True
+    return done
+
+def check_target(ctrl):
+    done = False    
+    collision, _, _ = check_operator_collision(ctrl)
+    selfCollisionRobot = ctrl.selfCollision_bool
+    globalCollisionRobot = ctrl.globalCollision_bool
+    if collision or selfCollisionRobot or globalCollisionRobot:
         done = True
     return done
 
@@ -205,6 +275,10 @@ if __name__ == '__main__':
         yLim_left = [0.0, 0.7]
         zLim = 1.0
         
+        #Table
+        resetTablePos = [3.0,3.0,3.0,3.0]
+        startTablePos = [0.0,0.0,0.0,0.0]
+        
         #######################
         #init DDPG stuff
         #######################
@@ -213,19 +287,19 @@ if __name__ == '__main__':
         evaluate = False
         
         #noise start at 0.1
-        noise = 0.08
+        noise = 0.07
         
-        observation_shape = (21,)
-        #  [head_x, head_y, head_z,
-        #   rxHand_x, rxHand_y, rxHand_z,
-        #   lxHand_x, lxHand_y, lxHand_z,
-        #   target_x, target_y, target_z,
+        observation_shape = (18,)
+        #  [head_x, head_y, head_z, <- si usano le distanze relative all'EE
+        #   rxHand_x, rxHand_y, rxHand_z, <- si usano le distanze relative all'EE
+        #   lxHand_x, lxHand_y, lxHand_z, <- si usano le distanze relative all'EE
+        #   target_x, target_y, target_z, <- si usano le distanze relative all'EE
         #   th_joints1, th_joints2, th_joints3,
-        #   EE_x, EE_y, EE_z,
+        #   EE_x, EE_y, EE_z, <-NON PiÙ
         #   EE_vx, EE_vy, EE_vz]
         
         agent = Agent(input_dims=observation_shape, n_actions=3,
-                      chkpt_dir='tmp/ddpg_billAvoidance',
+                      chkpt_dir='tmp/ddpg_billAvoider',
                       memory_dir='tmp/memory_billAvoider', noise=noise)        
         
         best_score = 0
@@ -242,13 +316,13 @@ if __name__ == '__main__':
             n_steps = 0
             while n_steps <= agent.batch_size:
                 observation = observe(controller)
-                action = [ randint(1, 10)/10 for _ in range(3) ]
-                controller.robot_vel_publish(action)
+                #action = [ randint(1, 10)/10 for _ in range(6) ]
+                #controller.robot_vel_publish(action)
                 #rate.sleep()
                 observation_ = observe(controller)
                 reward = give_reward(controller, np.zeros(3), np.zeros(3))
                 done = False
-                agent.remember(observation, action, reward, observation_, done)
+                agent.remember(observation, np.zeros(3), reward, observation_, done)
                 n_steps += 1
             agent.learn()
             agent.my_load_models()
@@ -266,6 +340,8 @@ if __name__ == '__main__':
             #rate.sleep()
             wait(rate, 30)
             
+            controller.table_publish(resetTablePos)
+            #rate.sleep()
             controller.robot_pos_publish()
             #rate.sleep()
             resetCompleted = False
@@ -281,6 +357,8 @@ if __name__ == '__main__':
                     break;
             if not resetCompleted:
                 rememberIteration = False
+            controller.table_publish(startTablePos)
+            #rate.sleep()
                 
             startConfig = startPosition[choice(range(len(startPosition)))]
             controller.robot_pos_publish(startConfig, False)
@@ -321,7 +399,7 @@ if __name__ == '__main__':
                 controller.robot_vel_publish(v)
                 #rate.sleep()
                 
-                if(count % 200 == 0 or count == 1):
+                if(count % 300 == 0 or count == 1):
                     controller.billHandPos_publishFun([2, 0, 0, 0])
                     hand = choice([0,1])
                     if hand==0: 
@@ -342,7 +420,7 @@ if __name__ == '__main__':
                 reward = give_reward(controller, action, old_action)
                 old_action = action
 
-                #done = check_target(controller)
+                done = check_target(controller)
                 
                 score += reward
                 
