@@ -6,6 +6,9 @@ FILE:
 
 
 CHANGELOG:
+3.0:
+	-"Simpler Searcher" definitive edition
+
 2.3.4:
 	-modifiche a "controlNode_billAvoider.py": si modifica il reward in modo tale da inserire una componente positiva
 
