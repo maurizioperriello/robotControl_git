@@ -6,6 +6,9 @@ FILE:
 
 
 CHANGELOG:
+3.1:
+	-Aggiunta scena di CoppeliaSim "ur10e_completeEnv.ttt"	
+
 3.0:
 	-"Simpler Searcher" definitive edition
 
