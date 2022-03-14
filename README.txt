@@ -6,6 +6,10 @@ FILE:
 
 
 CHANGELOG:
+3.2:
+	-Aggiornamento di "..._billAvoider.py"
+	-Aggiornamenti marginali a "DDPG_classes.py" (ora si può evitare di caricare la memoria sulla base dell'evaluate) e, di conseguenza, a "..._simplerSearcher.py"
+
 3.1:
 	-Aggiunta scena di CoppeliaSim "ur10e_completeEnv.ttt"	
 

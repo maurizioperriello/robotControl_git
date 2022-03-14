@@ -192,6 +192,10 @@ class Controller:
         """
         self.billLimb_spatialPos = [ [ 0 for _ in range(3) ]
                                     for _ in range(8) ]
+        self.billLimb_spatialVel = [ [ 0 for _ in range(3) ]
+                                    for _ in range(8) ]
+        self.start_billLimb_vect = [ [ 0 for _ in range(3) ]
+                                    for _ in range(8) ]
         
         
     #Publish functions
@@ -320,6 +324,17 @@ class Controller:
         
     #Callback function
     def billLimbPos_callback(self, msg):
+        check = False
+        old_spatialPos = self.start_billLimb_vect
+        if(self.billLimb_spatialPos != self.start_billLimb_vect):
+            check = True
+            old_spatialPos = self.billLimb_spatialPos
+        
         self.billLimb_spatialPos = [ [ msg.data[j] for j in range(3*i, 3+3*i) ]
                                     for i in range(8) ]
+        if check:
+            self.billLimb_spatialVel = [ [ self.billLimb_spatialPos[i][j]-old_spatialPos[i][j] 
+                                          for j in range(3) ] 
+                                            for i in range(8) ]
+        
         

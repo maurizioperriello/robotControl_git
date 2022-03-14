@@ -256,7 +256,7 @@ if __name__ == '__main__':
                 agent.remember(observation, action, reward, observation_, done)
                 n_steps += 1
             agent.learn()
-            agent.my_load_models()
+            agent.my_load_models(evaluate=evaluate)
             print('Loading completed:)')
         
         #routine di training/evalutation

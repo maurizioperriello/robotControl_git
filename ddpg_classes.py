@@ -98,7 +98,7 @@ class ActorNetwork(keras.Model):
         act = self.fc2(act)
         act = self.fc3(act)
         
-        #sse si vuole cambiare il limite delle azioni, basta moltiplicare qui per opportuni coefficienti
+        #se si vuole cambiare il limite delle azioni, basta moltiplicare qui per opportuni coefficienti
         act = self.mu(act)
         return act
         
@@ -276,7 +276,7 @@ class Agent:
         self.target_critic.save(self.target_critic.model_file)
         """
 
-    def my_load_models(self):
+    def my_load_models(self, evaluate=False):
         #funzione per caricare i pesi delle reti e la memoria
         print('Loading models...')
         self.actor.load_weights(self.actor.checkpoint_file)
@@ -284,9 +284,15 @@ class Agent:
         self.target_actor.load_weights(self.target_actor.checkpoint_file)
         self.target_critic.load_weights(self.target_critic.checkpoint_file)
         
-        #CARICARE MEMORIA!!!
-        print('Loading memory...')
-        self.memory.load_memory()
+        if not evaluate:
+            print('Loading memory...')
+            self.memory.load_memory()
+        else:
+            print('############################',
+                  '############################',
+                  '### MEMORY NOT LOADED!!! ###',
+                  '############################',
+                  '############################', sep='\n')
     
     def load_complete_models(self):
         #funzione per caricare i modelli interi della rete (non utilizzata)
