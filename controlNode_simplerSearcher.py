@@ -11,7 +11,7 @@ from listener_classes import Controller
 from random import randint, uniform
 import numpy as np
 from ddpg_classes import Agent
-
+import pandas as pd
 
 
 def debugInfo(n):
@@ -197,9 +197,9 @@ if __name__ == '__main__':
         #init DDPG stuff
         #######################
         
-        append_data = True
-        load_checkpoint = True #se True, carica i pesi e la memoria salvati
-        evaluate = True #se True, non effettua il learn né il salvataggio dei dati
+        append_data = False
+        load_checkpoint = False #se True, carica i pesi e la memoria salvati
+        evaluate = False #se True, non effettua il learn né il salvataggio dei dati
         select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni
         
         #meglio inserire anche theta_joints, per mantenere la proprietà di Markov                         
@@ -207,7 +207,7 @@ if __name__ == '__main__':
                                   #  EE_vx, EE_vy, EE_vz]  
         
         #start at 0.1
-        noise = 0.0
+        noise = 0.1
               
         agent = Agent(input_dims=observation_shape, n_actions=3, noise=noise,
                       chkpt_dir='tmp/ddpg_simplerSearcher',
@@ -215,8 +215,8 @@ if __name__ == '__main__':
         #l'uscita servirà a controllare solo i primi 3 gradi di libertà,
         #mentre gli altri saranno impostati diversamente
         
-        memory_file = 'tmp/score_memory_simplerSearcher.csv'
-        configuration_file = 'tmp/configuration_simplerSearcher.csv'
+        memory_file = 'tmp/score_memory_simplerSearcher_2.csv'
+        configuration_file = 'tmp/configuration_simplerSearcher_2.csv'
         #Il file delle configurazioni serve per salvare le configurazioni in
         #cui si è trovato il robot (posizione dei giunti) al momento della raggiunta
         #del goal: servono per addestrare il bill avoider
@@ -380,7 +380,9 @@ if __name__ == '__main__':
                     score_history = []
             print('Episode ', ep, 'score %.1f' % score, 'avg score %.1f' % avg_score,
               '---------------')                
-            
+        
+        score_df = pd.DataFrame(score_history, columns=['Score'])
+        score_df.to_csv('tmp/score_dataFrame.csv')
         
     except rospy.ROSInterruptException:
         pass

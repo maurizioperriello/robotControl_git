@@ -66,6 +66,7 @@ def observe(ctrl, target_pos):
     theta_joints = np.array(ctrl.robot_pos).copy()
     EE_pos = ctrl.EE_pos.copy()
     EE_vel = ctrl.EE_vel.copy()
+    object_pos = np.array(ctrl.target_pos).copy()
     #spatialPos_joints_robot = ctrl.joints_spatialPos.copy()
     billLimbs = np.array(ctrl.billLimb_spatialPos).copy()
     billLimbs_vel = np.array(ctrl.billLimb_spatialVel).copy()
@@ -98,10 +99,10 @@ def observe(ctrl, target_pos):
             obs.append(billLimbs_vel[l][h])
             
     for i in range(3):
-        obs.append(target_pos[i]) 
+        obs.append(object_pos[i]) 
        
     for i in range(3):
-        obs.append(target_pos[i]-EE_pos[i])     
+        obs.append(object_pos[i]-EE_pos[i])     
        
     for i in range(3):
         obs.append(EE_pos[i])
@@ -109,22 +110,24 @@ def observe(ctrl, target_pos):
     for i in range(3):
         obs.append(EE_vel[i])
     
-    for i in range(5):
+    for i in range(3):
         obs.append(theta_joints[i])
+    
+    #print(obs)
 
     return obs
 
 def give_reward(ctrl, v, old_v, obs, old_obs):
     dv_max = 0.26
     sft_d = 0.45 #distanza di sicurezza
-    a = 5
-    b = 7
+    a = 10
+    b = 100
     selfCollisionRobot = ctrl.selfCollision_bool
     globalCollisionRobot = ctrl.globalCollision_bool
-    target_pos = obs[18:21]
-    target_d = np.linalg.norm(target_pos)
-    e = 100 #if target_d>0.15 else 0
-    
+    targetEE_vect = obs[21:24] # qui ci va il vettore (target_pos - EE_pos)
+    target_d = np.linalg.norm(targetEE_vect)
+    e = 1000 #if target_d>0.15 else 0
+    #print(target_pos)
     """
     q = obs[21:24]
     q_old = old_obs[21:24]
@@ -141,18 +144,23 @@ def give_reward(ctrl, v, old_v, obs, old_obs):
     
     collision, max_distance_bool, d_min, d_vect = check_operator_collision(ctrl)
 
-    d_r = - np.array([ d_vect[i]/sft_d-1 if d_vect[i]<sft_d else 0
+    d_r = np.array([ 1-d_vect[i]/sft_d if d_vect[i]<sft_d else 0
                     for i in range(len(d_vect))]).sum()
 
-    reward = - e*target_d - a*mod_v - b*d_r - r #a*dq_mod
-
+    reward = - e*target_d - a*mod_v - b*d_r #- r #a*dq_mod
+    """
+    print(f'target_d = {target_d}',
+          f'mod_v = {mod_v}',
+          f'd_r = {d_r}',
+          f'r = {r}', sep='\n')
+    """
     #se c'è una collisione
     if(collision):
-        reward -= 100
+        reward -= 500
 
     #se c'è una collisione individuata da CoppeliaSim
     if(selfCollisionRobot or globalCollisionRobot):
-        reward -= 100
+        reward -= 500
         
     #se l'operatore è molto lontano e la velocità impostata è alta
     if(max_distance_bool and mod_v > 0.3):
@@ -204,6 +212,9 @@ def check_operator_collision(ctrl):
                     d_min = d
         d_min_vector.append(d_limbs[d_limbs.index(min(d_limbs))])
     distance_bool = d_min>0.6
+    
+    if(np.array(check_d).any()):
+        print(f'd_vector_collision: {d_min_vector}')
     
     return np.array(check_d).any(), distance_bool, d_min, d_min_vector
 
@@ -322,13 +333,13 @@ if __name__ == '__main__':
         #init DDPG stuff
         #######################
         
-        load_checkpoint = False
+        load_checkpoint = True
         evaluate = False
         
         #noise start at 0.1
-        noise = 0.1
+        noise = 0.05
         
-        observation_shape = (35,)
+        observation_shape = (33,)
         #  [head_x, head_y, head_z,
         #   rxHand_x, rxHand_y, rxHand_z,
         #   lxHand_x, lxHand_y, lxHand_z,
@@ -339,7 +350,8 @@ if __name__ == '__main__':
         
         agent = Agent(input_dims=observation_shape, n_actions=3,
                       chkpt_dir='tmp/ddpg_billAvoider',
-                      memory_dir='tmp/memory_billAvoider', noise=noise)        
+                      memory_dir='tmp/memory_billAvoider', noise=noise,
+                      fc1=800, fc2=600, fc3=300)        
         
         best_score = 0
         n_games = 10_000
@@ -377,7 +389,7 @@ if __name__ == '__main__':
             
             controller.billHandPos_publishFun([2, 0, 0, 0]) #reset position
             #rate.sleep()
-            wait(rate, 30)
+            wait(rate, 300)
             
             controller.table_publish(resetTablePos)
             #rate.sleep()
@@ -402,17 +414,17 @@ if __name__ == '__main__':
             startConfig = startPosition[choice(range(len(startPosition)))]
             controller.robot_pos_publish(startConfig, False)
             #rate.sleep()
-            wait(rate, 10)
+            wait(rate, 100)
             target_pos = controller.EE_pos.copy()
             """
             target_x = round(uniform(0.5, 1.0), 2)
             target_y = round(uniform(-0.75, 0.75), 2)
             target_z = 0.41
             object_position = [target_x, target_y, target_z]
-            
-            controller.target_pos_publish(object_position)
-            #rate.sleep()
             """
+            controller.target_pos_publish(target_pos)
+            #rate.sleep()
+            
             observation = observe(controller, target_pos)
             
             done = False
@@ -461,7 +473,7 @@ if __name__ == '__main__':
                     #rate.sleep()
                     
                 observation_ = observe(controller, target_pos)
-                reward = give_reward(controller, action, old_action, observation, observation_)
+                reward = give_reward(controller, action, old_action, observation_, observation)
                 old_action = action
 
                 #done = check_target(controller)

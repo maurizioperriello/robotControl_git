@@ -6,6 +6,10 @@ FILE:
 
 
 CHANGELOG:
+3.2.1:
+	-Aggiornamento di "..._billAvoider.py"
+	-Aggiornamento di "..._simplerSearcher.py": ora si salva lo score su un pandas dataframe
+
 3.2:
 	-Aggiornamento di "..._billAvoider.py"
 	-Aggiornamenti marginali a "DDPG_classes.py" (ora si può evitare di caricare la memoria sulla base dell'evaluate) e, di conseguenza, a "..._simplerSearcher.py"
