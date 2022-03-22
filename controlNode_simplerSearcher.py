@@ -74,16 +74,18 @@ def give_reward(d_history, ctrl, v, old_v):
     for i in range(np.size(objPos)):
         d = d + (objPos[i] - EEpos[i])**2
     d = np.sqrt(d)
-    
+    """
     max_dv = 0.26 #se effettivamente si usano i radianti, cosa da verificare
     dv = [ abs(v[i]-old_v[i]) for i in range(3) ]
     c = [ 1.5 if dv[i]>max_dv else 0 for i in range(3) ]
     r = sum( [ x*y for (x, y) in zip(c, dv) ] )
+    """
+    r2 = 1.2*np.linalg.norm(v)
     
     #table_r = 100 if EEpos[2] < 0.36 else 0 #reward per evitare che l'EE tocchi il tavolo
     
     a = 10
-    reward = - a*d - r # - table_r
+    reward = - a*d - r2 #- r # - table_r
     
     d_history.append(d)
     #d_history non viene utilizzato, ma può tornare utile per visualizzare
@@ -91,7 +93,7 @@ def give_reward(d_history, ctrl, v, old_v):
 
     return reward, d_history
 
-def check_target(ctrl):
+def check_target_OLD(ctrl):
     #funzione per controllare se il risultato è stato raggiunto o meno:
     #per farlo, bisogna arrivare in prossimità del target (sfera bianca) con
     #una velocità inferiore o ugule a 0.1 m/s
@@ -101,13 +103,18 @@ def check_target(ctrl):
     objPos = np.array(ctrl.target_pos).copy()
     finalLinks = ctrl.finalLinks_spatialPos.copy()
     joints_spatialPos = ctrl.joints_spatialPos
-    
+    """
+    d = 0
+    for i in range(np.size(objPos)):
+        d = d + (objPos[i] - EEpos[i])**2
+    d = np.sqrt(d)
+    """
     EE_angles = [finalLinks[0][0] - finalLinks[1][0], finalLinks[0][1] - finalLinks[1][1]]
     z_check = finalLinks[1][2] < finalLinks[0][2]
 
-    check_bools_pos = [ objPos[i] <= EEpos[i]+0.15 and objPos[i] >= EEpos[i]-0.15 
+    check_bools_pos = [ objPos[i] <= EEpos[i]+0.05 and objPos[i] >= EEpos[i]-0.05 
                    for i in range(2) ]
-    check_bools_pos.append( objPos[2] <= EEpos[2] and objPos[2] >= EEpos[2]-0.15 )
+    check_bools_pos.append( objPos[2] <= EEpos[2] and objPos[2] >= EEpos[2]-0.05 )
     check_angles = [ EE_angles[i]>=-delta and EE_angles[i]<=delta
                     for i in range(2) ]
     check_EE_pos = joints_spatialPos[4][0] > joints_spatialPos[3][0] #in questo modo l'EE non è girato ma rivolto in avanti
@@ -120,6 +127,37 @@ def check_target(ctrl):
     for i in range(np.size(check_bools)):
         check = check and check_bools[i]
     return check
+
+def check_target(ctrl):
+    #funzione per controllare se il risultato è stato raggiunto o meno:
+    #per farlo, bisogna arrivare in prossimità del target (sfera bianca) con
+    #una velocità inferiore o ugule a 0.1 m/s
+    delta = 0.02 
+    d_goal = 0.15
+    
+    EEpos = ctrl.EE_pos.copy() #se possibile, si effettua sempre la copia dei valori della classe controller
+    objPos = np.array(ctrl.target_pos).copy()
+    finalLinks = ctrl.finalLinks_spatialPos.copy()
+    joints_spatialPos = ctrl.joints_spatialPos
+    
+    d = 0
+    for i in range(np.size(objPos)):
+        d = d + (objPos[i] - EEpos[i])**2
+    d = np.sqrt(d)
+    
+    EE_angles = [finalLinks[0][0] - finalLinks[1][0], finalLinks[0][1] - finalLinks[1][1]]
+    z_check = finalLinks[1][2] < finalLinks[0][2]
+
+    check_bools_pos = d <= d_goal and EEpos[2] >= objPos[2]
+    check_angles = [ EE_angles[i]>=-delta and EE_angles[i]<=delta
+                    for i in range(2) ]
+    check_EE_pos = joints_spatialPos[4][0] > joints_spatialPos[3][0] #in questo modo l'EE non è girato ma rivolto in avanti
+    
+    check_bools = np.append(check_bools_pos, check_angles)
+    check_bools = np.append(check_bools, z_check)
+    check_bools = np.append(check_bools, check_EE_pos)
+
+    return np.array(check_bools).all()
 
 
 def findV4(ctrl):
@@ -198,7 +236,7 @@ if __name__ == '__main__':
         #######################
         
         append_data = False
-        load_checkpoint = False #se True, carica i pesi e la memoria salvati
+        load_checkpoint = True #se True, carica i pesi e la memoria salvati
         evaluate = False #se True, non effettua il learn né il salvataggio dei dati
         select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni
         
@@ -207,16 +245,16 @@ if __name__ == '__main__':
                                   #  EE_vx, EE_vy, EE_vz]  
         
         #start at 0.1
-        noise = 0.1
+        noise = 0.0
               
         agent = Agent(input_dims=observation_shape, n_actions=3, noise=noise,
-                      chkpt_dir='tmp/ddpg_simplerSearcher',
-                      memory_dir='tmp/memory_simplerSearcher')
+                      chkpt_dir='tmp/ddpg_simplerSearcher_newEnv',
+                      memory_dir='tmp/memory_simplerSearcher_newEnv')
         #l'uscita servirà a controllare solo i primi 3 gradi di libertà,
         #mentre gli altri saranno impostati diversamente
         
-        memory_file = 'tmp/score_memory_simplerSearcher_2.csv'
-        configuration_file = 'tmp/configuration_simplerSearcher_2.csv'
+        memory_file = 'tmp/score/score_memory_simplerSearcher_newEnv.csv'
+        configuration_file = 'tmp/score/configuration_simplerSearcher_newEnv.csv'
         #Il file delle configurazioni serve per salvare le configurazioni in
         #cui si è trovato il robot (posizione dei giunti) al momento della raggiunta
         #del goal: servono per addestrare il bill avoider
@@ -236,6 +274,7 @@ if __name__ == '__main__':
         n_games += 1 #per far si che al penultimo game si salvi la memoria (viene salvata ogn 100 episode, per non rallentare troppo il processo)
         limit_count = 1500 #numero di iterazioni massime per episode
         score_history = []
+        success_history = []
         config_history = []
     
         #routine di caricamento dei pesi e della memoria
@@ -268,7 +307,7 @@ if __name__ == '__main__':
             controller.robot_vel_publish(start_vel_robot)
             #rate.sleep()
             
-            controller.table_publish(resetTablePos)
+            #controller.table_publish(resetTablePos)
             #rate.sleep()
             controller.robot_pos_publish()
             #rate.sleep()
@@ -291,13 +330,20 @@ if __name__ == '__main__':
                 remember_iteration = True
             else:
                 remember_iteration = False
-            controller.table_publish(startTablePos)
+            #controller.table_publish(startTablePos)
             #rate.sleep()
-                    
+                
+            """
             target_x = round(uniform(0.5, 1.0), 2)
             target_y = round(uniform(-0.75, 0.75), 2)
             target_z = round(uniform(0.41, 0.7), 2)
             #target_z = 0.41
+            """
+            
+            #New Env (senza tavolo)
+            target_x = round(uniform(0.0, 0.65), 2)
+            target_y = round(uniform(-0.5, 0.5), 2)
+            target_z = round(uniform(0.0, 0.45), 2)
             object_position = [target_x, target_y, target_z]
             
             controller.target_pos_publish(object_position)
@@ -360,9 +406,14 @@ if __name__ == '__main__':
                 print(count)
                 if(count == limit_count):
                     break;
-                
-            score_history.append(score)
-            avg_score = np.mean(score_history[-100:]) #punteggio medio degli ultimi 100 episodi
+            
+            if remember_iteration:    
+                score_history.append(score)
+                success_history.append(int(done))
+            if(len(score_history) <= 1):
+                avg_score = np.nan
+            else:
+                avg_score = np.mean(score_history[-100:]) #punteggio medio degli ultimi 100 episodi
             if avg_score > best_score:
                 best_score = avg_score #indicazione della migliore media raggiunta
             if not evaluate and not rospy.is_shutdown():
@@ -381,8 +432,9 @@ if __name__ == '__main__':
             print('Episode ', ep, 'score %.1f' % score, 'avg score %.1f' % avg_score,
               '---------------')                
         
-        score_df = pd.DataFrame(score_history, columns=['Score'])
-        score_df.to_csv('tmp/score_dataFrame.csv')
+        score_df = pd.DataFrame(list(zip(success_history, score_history)),
+                                     columns=['success', 'score'])
+        score_df.to_csv('tmp/score/score_dataFrame_searcher_newEnv.csv')
         
     except rospy.ROSInterruptException:
         pass

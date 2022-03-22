@@ -20,7 +20,10 @@ def dot(v,w):
 
 def length(v):
     x,y,z = v
-    return math.sqrt(x*x + y*y + z*z)
+    len_v = math.sqrt(x*x + y*y + z*z)
+    if len_v == 0:
+        len_v = 1
+    return len_v
 
 def vector(b,e):
     x,y,z = b
@@ -30,6 +33,8 @@ def vector(b,e):
 def unit(v):
     x,y,z = v
     mag = length(v)
+    if mag == 0:
+        mag = 1
     return (x/mag, y/mag, z/mag)
 
 def distance(p0,p1):

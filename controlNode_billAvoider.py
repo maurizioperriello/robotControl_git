@@ -120,8 +120,8 @@ def observe(ctrl, target_pos):
 def give_reward(ctrl, v, old_v, obs, old_obs):
     dv_max = 0.26
     sft_d = 0.45 #distanza di sicurezza
-    a = 10
-    b = 100
+    a = 50
+    b = 200
     selfCollisionRobot = ctrl.selfCollision_bool
     globalCollisionRobot = ctrl.globalCollision_bool
     targetEE_vect = obs[21:24] # qui ci va il vettore (target_pos - EE_pos)
@@ -133,10 +133,11 @@ def give_reward(ctrl, v, old_v, obs, old_obs):
     q_old = old_obs[21:24]
     dq_mod = np.linalg.norm(np.subtract(q, q_old))
     """
+    """
     dv = [ abs(v[i]-old_v[i]) for i in range(3) ]
     c = [ 2 if dv[i]>dv_max else 0 for i in range(3) ]
     r = sum( [ x*y for (x, y) in zip(c, dv) ] )
-    
+    """
     mod_v = 0
     for i in range(len(v)):
         mod_v = mod_v + v[i]**2
@@ -178,7 +179,7 @@ def check_operator_collision(ctrl):
     limbSelector = [4, 6, 7]
     points = []
     points.append(EE_pos)
-    for i in range(5, 1, -1):
+    for i in range(5, 0, -1):
         points.append(spatialPos_joints_robot[i])
 
     d_min = 100 #distanza minima tra le varie distanze calcolate
@@ -318,15 +319,23 @@ if __name__ == '__main__':
       
         #Bill
         #Limiti per le posizioni delle mani
+        """
         xLim_right = [0.25, 0.7] #[0.25, 0.8]
         yLim_right = [-0.7, 0.0]
         xLim_left = [0.25, 0.7] #[0.25, 0.8]
         yLim_left = [0.0, 0.7]
         zLim = 1.0
+        """
+        #New Env
+        xLim_right = [0.25, 0.7] #[0.25, 0.8]
+        yLim_right = [-0.7, 0.0]
+        xLim_left = [0.25, 0.7] #[0.25, 0.8]
+        yLim_left = [0.0, 0.45]
+        zLim = 1.1
         
         #Table
-        resetTablePos = [3.0,3.0,3.0,3.0]
-        startTablePos = [0.0,0.0,0.0,0.0]
+        #resetTablePos = [3.0,3.0,3.0,3.0]
+        #startTablePos = [0.0,0.0,0.0,0.0]
         
         
         #######################
@@ -337,7 +346,7 @@ if __name__ == '__main__':
         evaluate = False
         
         #noise start at 0.1
-        noise = 0.05
+        noise = 0.0
         
         observation_shape = (33,)
         #  [head_x, head_y, head_z,
@@ -359,7 +368,8 @@ if __name__ == '__main__':
         limit_count = 1500
         score_history = []
         
-        position_file = 'tmp/configuration_simplerSearcher.csv'
+        #position_file = 'tmp/configuration_simplerSearcher.csv'
+        position_file = 'tmp/score/configuration_simplerSearcher_newEnv.csv'
         startPosition = readPositionFile(position_file)
 
         if load_checkpoint:
@@ -391,7 +401,7 @@ if __name__ == '__main__':
             #rate.sleep()
             wait(rate, 300)
             
-            controller.table_publish(resetTablePos)
+            #controller.table_publish(resetTablePos)
             #rate.sleep()
             controller.robot_pos_publish()
             #rate.sleep()
@@ -408,7 +418,7 @@ if __name__ == '__main__':
                     break;
             if not resetCompleted:
                 rememberIteration = False
-            controller.table_publish(startTablePos)
+            #controller.table_publish(startTablePos)
             #rate.sleep()
                 
             startConfig = startPosition[choice(range(len(startPosition)))]

@@ -6,6 +6,10 @@ FILE:
 
 
 CHANGELOG:
+4.0:
+	-Si cambia il modello del robot (si passa a ur10e definitivo) e si modificano gli ambienti in linea con quelli reali
+	-Si modificano di conseguenza gli scripts dei due agenti (marginalmente)
+
 3.2.1:
 	-Aggiornamento di "..._billAvoider.py"
 	-Aggiornamento di "..._simplerSearcher.py": ora si salva lo score su un pandas dataframe
