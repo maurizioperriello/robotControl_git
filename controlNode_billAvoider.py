@@ -11,7 +11,9 @@ from listener_classes import Controller
 import numpy as np
 from random import randint, uniform, choice
 from ddpg_classes import Agent
-from utils import pnt2line
+from utils import pnt2line, saveContext, restoreContext
+
+__saved_context__ = {}
 
 def debugInfo(n):
     print(f'Ciao:) - {n}')
@@ -24,34 +26,7 @@ def wait(rate, n_ds):
     
 def readPositionFile(file):
     position = np.genfromtxt(file)
-    return position    
-    
-def observe_OLD(ctrl):
-    theta_joints = np.array(ctrl.robot_pos).copy()
-    EE_pos, EE_vel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy()
-    target_pos = np.array(ctrl.target_pos).copy()
-    billLimbs = np.array(ctrl.billLimb_spatialPos).copy()
-    limbSelector = [4, 6, 7] #testa, mano destra, mano sinistra
-    obs = []
-    
-    for i in limbSelector:
-        for j in range(3):
-            obs.append(billLimbs[i][j])
-    
-    for i in range(3):
-        obs.append(target_pos[i])
-    
-    """
-    for i in range(3):
-        obs.append(theta_joints[i])
-    """
-    for i in range(3):
-        obs.append(EE_pos[i])
-    
-    for i in range(3):
-        obs.append(EE_vel[i])
-            
-    return obs
+    return position
 
 def observe(ctrl, target_pos):
     
@@ -99,10 +74,12 @@ def observe(ctrl, target_pos):
             obs.append(billLimbs_vel[l][h])
             
     for i in range(3):
-        obs.append(object_pos[i]) 
+        #obs.append(object_pos[i]) 
+        obs.append(target_pos[i]) 
        
     for i in range(3):
-        obs.append(object_pos[i]-EE_pos[i])     
+        #obs.append(object_pos[i]-EE_pos[i])   
+        obs.append(target_pos[i]-theta_joints[i])
        
     for i in range(3):
         obs.append(EE_pos[i])
@@ -113,21 +90,27 @@ def observe(ctrl, target_pos):
     for i in range(3):
         obs.append(theta_joints[i])
     
-    #print(obs)
+    #print(object_pos)
 
     return obs
 
 def give_reward(ctrl, v, old_v, obs, old_obs):
     dv_max = 0.26
     sft_d = 0.45 #distanza di sicurezza
-    a = 50
-    b = 200
+    a1 = 100
+    a2 = 10
+    b = 600
     selfCollisionRobot = ctrl.selfCollision_bool
     globalCollisionRobot = ctrl.globalCollision_bool
     targetEE_vect = obs[21:24] # qui ci va il vettore (target_pos - EE_pos)
     target_d = np.linalg.norm(targetEE_vect)
-    e = 1000 #if target_d>0.15 else 0
+    e = 500 #if target_d>0.15 else 0
     #print(target_pos)
+    EE_pos = np.array(ctrl.EE_pos).copy()
+    EEz = EE_pos[2]
+    robot_acc = np.array(ctrl.robot_acc).copy()
+    acc_r = np.linalg.norm(robot_acc[0:3])
+    
     """
     q = obs[21:24]
     q_old = old_obs[21:24]
@@ -148,7 +131,7 @@ def give_reward(ctrl, v, old_v, obs, old_obs):
     d_r = np.array([ 1-d_vect[i]/sft_d if d_vect[i]<sft_d else 0
                     for i in range(len(d_vect))]).sum()
 
-    reward = - e*target_d - a*mod_v - b*d_r #- r #a*dq_mod
+    reward = - e*target_d - a1*mod_v - b*d_r - a2*acc_r #- r #a*dq_mod
     """
     print(f'target_d = {target_d}',
           f'mod_v = {mod_v}',
@@ -157,15 +140,18 @@ def give_reward(ctrl, v, old_v, obs, old_obs):
     """
     #se c'è una collisione
     if(collision):
-        reward -= 500
+        reward -= 1200
 
     #se c'è una collisione individuata da CoppeliaSim
     if(selfCollisionRobot or globalCollisionRobot):
-        reward -= 500
+        reward -= 1200
         
     #se l'operatore è molto lontano e la velocità impostata è alta
     if(max_distance_bool and mod_v > 0.3):
-        reward -= 20
+        reward -= 100
+        
+    if(EEz <= 0.05):
+        reward -= 100
     
     return reward
 
@@ -279,6 +265,9 @@ def findV5(ctrl):
 
 if __name__ == '__main__':
     try:
+        
+        #__saved_context__ = saveContext()
+        
         #######################
         #init ROS stuff
         #######################
@@ -331,7 +320,8 @@ if __name__ == '__main__':
         yLim_right = [-0.7, 0.0]
         xLim_left = [0.25, 0.7] #[0.25, 0.8]
         yLim_left = [0.0, 0.45]
-        zLim = 1.1
+        #zLim = 1.1
+        zLim = [1.1, 1.5]
         
         #Table
         #resetTablePos = [3.0,3.0,3.0,3.0]
@@ -360,7 +350,7 @@ if __name__ == '__main__':
         agent = Agent(input_dims=observation_shape, n_actions=3,
                       chkpt_dir='tmp/ddpg_billAvoider',
                       memory_dir='tmp/memory_billAvoider', noise=noise,
-                      fc1=800, fc2=600, fc3=300)        
+                      fc1=900, fc2=600, fc3=300)        
         
         best_score = 0
         n_games = 10_000
@@ -399,7 +389,7 @@ if __name__ == '__main__':
             
             controller.billHandPos_publishFun([2, 0, 0, 0]) #reset position
             #rate.sleep()
-            wait(rate, 300)
+            wait(rate, 250)
             
             #controller.table_publish(resetTablePos)
             #rate.sleep()
@@ -424,17 +414,28 @@ if __name__ == '__main__':
             startConfig = startPosition[choice(range(len(startPosition)))]
             controller.robot_pos_publish(startConfig, False)
             #rate.sleep()
-            wait(rate, 100)
-            target_pos = controller.EE_pos.copy()
+            #wait(rate, 80)
+            setConfigCompleted = False
+            c = 0
+            while(not setConfigCompleted):
+                r_pos = np.array(controller.robot_pos).copy()
+                setConfigCompleted = np.array(
+                        [ r_pos[i]>=startConfig[i]-0.1 and r_pos[i]<=startConfig[i]+0.1 for i in range(6) ]
+                        ).all()
+                c += 1
+                if(c == 500_000):
+                    break;
+            #target_pos = controller.EE_pos.copy()
+            target_pos = startConfig[0:3]
             """
             target_x = round(uniform(0.5, 1.0), 2)
             target_y = round(uniform(-0.75, 0.75), 2)
             target_z = 0.41
             object_position = [target_x, target_y, target_z]
             """
-            controller.target_pos_publish(target_pos)
-            #rate.sleep()
-            
+            #controller.target_pos_publish(target_pos)
+            controller.target_pos_publish([2.0, 2.0, 0.0])
+            #rate.sleep()            
             observation = observe(controller, target_pos)
             
             done = False
@@ -464,16 +465,17 @@ if __name__ == '__main__':
                 if(count % 300 == 0 or count == 1):
                     #controller.billHandPos_publishFun([2, 0, 0, 0])
                     hand = choice([0,1])
+                    #[ VEDI OLDfun.py per versione alternativa di "BILL CODE" ]
                     if hand==0: 
                         #right hand
                         hand_pos = [round(uniform(xLim_right[0], xLim_right[1]), 2),
                                     round(uniform(yLim_right[0], yLim_right[1]), 2),
-                                    zLim]
+                                    round(uniform(zLim[0], zLim[1]), 2)]
                     else: 
                         #left hand
                         hand_pos = [round(uniform(xLim_left[0], xLim_left[1]), 2),
                                     round(uniform(yLim_left[0], yLim_left[1]), 2),
-                                    zLim]
+                                    round(uniform(zLim[0], zLim[1]), 2)]
                     bill_cmd = np.append(hand, hand_pos)
                     controller.billHandPos_publishFun(bill_cmd)
                     #rate.sleep()
@@ -512,8 +514,11 @@ if __name__ == '__main__':
                 controller.robot_vel_publish(start_vel_robot)
                 agent.save_models(i)
             print('Episode ', i, 'score %.1f' % score, 'avg score %.1f' % avg_score,
-              '---------------')                
-                
+              '---------------')
+            """
+            if(rospy.is_shutdown()):
+                restoreContext(__saved_context__)
+            """               
         
     except rospy.ROSInterruptException:
         pass

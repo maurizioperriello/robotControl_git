@@ -6,6 +6,9 @@ FILE:
 
 
 CHANGELOG:
+5.0:
+	-Si modificano le scene di CoppeliaSim e si realizzano i file per la simulazione definitiva
+
 4.0:
 	-Si cambia il modello del robot (si passa a ur10e definitivo) e si modificano gli ambienti in linea con quelli reali
 	-Si modificano di conseguenza gli scripts dei due agenti (marginalmente)
