@@ -43,7 +43,9 @@ class Scheduler:
         self.robot_task_ind = None
         self.bill_task_ind = None
         
-        #self.setUpTask()
+        self.robotFinish = False
+        self.billFinish = False
+
         
     
     def changeProject(self, project):
@@ -72,18 +74,21 @@ class Scheduler:
                 self.bill_task_ind[1]  
     
     def updateRobotTask(self):
-        if self.robot_tasks['completed'][self.robot_task_ind[0]][self.robot_task_ind[1]]:
+        if self.robot_tasks['completed'][self.robot_task_ind[0]][self.robot_task_ind[1]] and \
+            not self.robotFinish :
             if self.robot_task_ind[1] == 0:
                 self.robot_task_ind[1] = 1
                 return 1 #il lavoro può procedere
             else:
                 taskCompleted = self.robot_tasks['cube'][self.robot_task_ind[0]]
                 index_taskCompleted = self.project['cube'].index(taskCompleted)
-                self.project['comlpleted'][index_taskCompleted] = True
-                ind = self.robot_task_ind[0] + 1
-                if ind == self.max_task:
+                self.project['completed'][index_taskCompleted] = True
+                if self.robot_task_ind[0]+1 == self.max_task:
+                    self.robotFinish = True
                     return 2 #tutte le task sono state completate
-                nextTask = self.robot_tasks['cube'][ind]
+                self.robot_task_ind[0] = self.robot_task_ind[0] + 1
+                self.robot_task_ind[1] = 0
+                nextTask = self.robot_tasks['cube'][self.robot_task_ind[0]]
                 index_nextTask = self.project['cube'].index(nextTask)
                 priorities = self.project['priorities'][index_nextTask]
                 if len(priorities) == 0:
@@ -97,6 +102,8 @@ class Scheduler:
                         return 1
                     else:
                         return 0
+        elif self.robotFinish:
+            return 2
         else:
             nextTask = self.robot_tasks['cube'][self.robot_task_ind[0]]
             index_nextTask = self.project['cube'].index(nextTask)
@@ -114,7 +121,8 @@ class Scheduler:
                     return 0
     
     def updateBillTask(self):
-        if self.bill_tasks['completed'][self.bill_task_ind[0]][self.bill_task_ind[1]]:
+        if self.bill_tasks['completed'][self.bill_task_ind[0]][self.bill_task_ind[1]] and \
+            not self.billFinish :
             if self.bill_task_ind[1] == 0:
                 self.bill_task_ind[1] = 1
                 return 1 #il lavoro può procedere
@@ -122,12 +130,15 @@ class Scheduler:
                 taskCompleted = self.bill_tasks['cube'][self.bill_task_ind[0]]
                 index_taskCompleted = self.project['cube'].index(taskCompleted)
                 self.project['completed'][index_taskCompleted] = True
-                ind = self.bill_task_ind[0] + 1
-                if ind == self.max_task:
+                if self.bill_task_ind[0]+1 == self.max_task:
+                    self.billFinish = True
                     return 2 #tutte le task sono state completate
-                nextTask = self.bill_tasks['cube'][ind]
+                self.bill_task_ind[0] += 1
+                self.bill_task_ind[1] = 0
+                nextTask = self.bill_tasks['cube'][self.bill_task_ind[0]]
                 index_nextTask = self.project['cube'].index(nextTask)
                 priorities = self.project['priorities'][index_nextTask]
+                #print(f'Priorities of {nextTask}: {priorities}')
                 if len(priorities) == 0:
                     return 1
                 else:
@@ -135,10 +146,14 @@ class Scheduler:
                     for task in priorities:
                         task_index = self.project['cube'].index(task)
                         priorityBoolList.append(self.project['completed'][task_index])
+                    #print(f'Priorities of {nextTask}: {priorityBoolList}')
                     if np.array(priorityBoolList).all():
                         return 1
                     else:
+                        #print(f'{nextTask} ciao:(')
                         return 0
+        elif self.billFinish:
+            return 2
         else:
             nextTask = self.bill_tasks['cube'][self.bill_task_ind[0]]
             index_nextTask = self.project['cube'].index(nextTask)
@@ -150,30 +165,32 @@ class Scheduler:
                 for task in priorities:
                     task_index = self.project['cube'].index(task)
                     priorityBoolList.append(self.project['completed'][task_index])
+                #print(f'Priorities of {nextTask}: {priorityBoolList}')
                 if np.array(priorityBoolList).all():
+                    #print(f'{nextTask} ciao:)')
                     return 1
                 else:
+                    #print(f'{nextTask} ciao:(')
                     return 0  
             
             
     def sortTask(self, task, prec):
-        #prec = task['priorities']
         numberPrec = [ len(x) for x in prec ]
         numberPrecSort = numberPrec.copy()
         numberPrecSort.sort()
         
         index_task = []
         old_val = None
-        pop_n = 0
+        eqVal_n = 0
         for val in numberPrecSort:
             if val == old_val:
-                numberPrec.pop(numberPrec.index(val))
-                pop_n += 1
-            ind = numberPrec.index(val)
-            ind += pop_n 
-            index_task.append(ind)
+                eqVal_n += 1
+            else:
+                eqVal_n = 0 
+            indices = [i for i, x in enumerate(numberPrec) if x == val]
+            index_task.append(indices[eqVal_n])
             old_val = val
-        
+        print(f'index task = {index_task}')
         sortedTask = { 'cube' : [ task['cube'][i] for i in index_task ],
                      'position' : [ task['position'][i] for i in index_task ],
                      'completed' : [ task['completed'][i] for i in index_task ] }
@@ -183,7 +200,6 @@ class Scheduler:
         if self.project is None:
             return
         billLimb = np.array(self.scController.billLimb_spatialPos).copy()
-        print(billLimb)
         RightHand_pos = billLimb[6]
         LeftHand_pos = billLimb[7]
         cubes_pos = []
@@ -221,10 +237,10 @@ class Scheduler:
         """
         bill_task = { 'cube' : [ self.project['cube'][i] for i in index_bill_task ],
                       'position' : [ [cubes_pos[i], self.project['position'][i]] for i in index_bill_task ],
-                      'completed' : [ [False, False] for _ in range(len(self.project['cube'])) ] }
+                      'completed' : [ [False, False] for _ in range(3) ] }
         robot_task = { 'cube' : [ self.project['cube'][i] for i in index_robot_task ],
                        'position' : [ [cubes_pos[i], self.project['position'][i]] for i in index_robot_task ],
-                       'completed' : [ [False, False] for _ in range(len(self.project['cube'])) ] }
+                       'completed' : [ [False, False] for _ in range(3) ] }
         bill_task_priorities = [ self.project['priorities'][i] 
                                 for i in index_bill_task ]
         robot_task_priorities = [ self.project['priorities'][i] 
@@ -242,9 +258,18 @@ class Scheduler:
         self.bill_task_ind = [0, 0]
         self.robot_task_ind = [0, 0]
         
-        print('Bill task: {}'.format(self.bill_tasks['position']), 
-              'ur10e task: {}'.format(self.robot_tasks['position']), sep='\n')
+        print('Bill task: {}'.format(self.bill_tasks['cube']), 
+              'ur10e task: {}'.format(self.robot_tasks['cube']), sep='\n')
 
+    
+    def reset(self):
+        self.robot_tasks = None
+        self.bill_tasks = None
+        self.robot_task_ind = None
+        self.bill_task_ind = None
+        self.robotFinish = False
+        self.billFinish = False
+        self.project['completed'] = [ False for _ in range(6) ]
 
 
 class AI:    
@@ -267,7 +292,7 @@ class AI:
                                [0, 0, 1]])
         self.tr_vect = np.array([0.75, 0.0, 1.0])
         
-        self.secure_d = 0.45
+        self.secure_d = 0.30
         self.dt = 0.05
         
         self.searcher = Agent(input_dims=inputDim_searcher, n_actions=3, fc1=fc1_searcher,
@@ -321,13 +346,13 @@ class AI:
         return obs
     
     
-    def observe_avoider(self, theta_target=None):
+    def observe_avoider(self, v_searcher, theta_target=None):
         theta_joints = np.array(self.controller.robot_pos).copy()
         if theta_target is None:
             theta_target = np.zeros(3)
-            vel_joints = np.array(self.controller.robot_vel).copy()
+            #vel_joints = np.array(self.controller.robot_vel).copy()
             for i in range(3):
-                theta_target[i] = theta_joints[i] + vel_joints[i]*self.dt*5
+                theta_target[i] = theta_joints[i] + v_searcher[i]*self.dt*5
         EE_pos = self.controller.EE_pos.copy()
         EE_vel = self.controller.EE_vel.copy()
         billLimbs = np.array(self.controller.billLimb_spatialPos).copy()
@@ -386,9 +411,9 @@ class AI:
         check_bools = np.append(check_bools, z_check)
         check_bools = np.append(check_bools, check_EE_pos)
         taskCompleted = np.array(check_bools).all()
-        if taskCompleted:
-            print('ur10e task completed:)')
+        if taskCompleted and self.robot_state != 2:
             cubeName, cubePos, pickOrPlaceBool = self.scheduler_getCurrentTask(0)
+            print('ur10e task completed: {}, {}'.format(cubeName, pickOrPlaceBool))
             self.moveObject(cubeName, cubePos, pickOrPlaceBool)
             self.scheduler_clearTask(0)
             self.scheduler_updateTask(0)
@@ -406,9 +431,9 @@ class AI:
         rx_d = np.linalg.norm([ RX_hand[i]-self.target_bill[i] for i in range(3) ])
         lx_d = np.linalg.norm([ LX_hand[i]-self.target_bill[i] for i in range(3) ])
         taskCompleted = (rx_d <= d_min) or (lx_d <= d_min)
-        if taskCompleted:
-            print('Bill task completed:)')
+        if taskCompleted and self.bill_state != 2:
             cubeName, cubePos, pickOrPlaceBool = self.scheduler_getCurrentTask(1)
+            print('Bill task completed: {}, {}'.format(cubeName, pickOrPlaceBool))
             self.moveObject(cubeName, cubePos, pickOrPlaceBool)
             self.scheduler_clearTask(1)
             self.scheduler_updateTask(1)
@@ -426,7 +451,7 @@ class AI:
         n_steps = 0
         while n_steps <= self.searcher.batch_size:
             obs_sea = self.observe_searcher()
-            obs_av = self.observe_avoider()
+            obs_av = self.observe_avoider(v_searcher=np.zeros(6))
             reward = 0
             done = False
             self.searcher.remember(obs_sea, np.zeros(3), reward, obs_sea, done)
@@ -445,7 +470,7 @@ class AI:
         point_op = np.array(self.controller.billLimb_spatialPos).copy()
         EE_pos = self.controller.EE_pos.copy()
     
-        coll_d = 0.2 #minima distanza (di sicurezza) entro la quale si considera una collisione
+        coll_d = 0.15 #minima distanza (di sicurezza) entro la quale si considera una collisione
         limbSelector = [4, 6, 7]
         points = []
         points.append(EE_pos)
@@ -499,43 +524,56 @@ class AI:
     
     
     def doAction(self, target_pos=None, theta_target=None):
-        if self.robot_state == 0 or self.robot_state == 2 or self.robot_state == -1:
+        if self.robot_state == 0 or self.robot_state == -1:
             self.scheduler_updateTask(0)
             if self.robot_state == 1:
                 self.scheduler_updateTarget(0)
             else:
                 self.controller.robot_pos_publish(reset=True)
                 return
+        elif self.robot_state == 2:
+            self.controller.robot_pos_publish(reset=True)
+            return
         else:
             self.scheduler_updateTarget(0)
+        v4, v5 = self.findV45()
         obs_sea = self.observe_searcher(target_pos)
-        obs_av = self.observe_avoider(theta_target)
         v_sea = self.searcher.choose_action(obs_sea, True)
+        v_searcher = list(np.array(v_sea).copy())
+        v_searcher.append(v4)
+        v_searcher.append(v5)
+        v_searcher.append(0.0)
+        obs_av = self.observe_avoider(v_searcher, theta_target)
         v_av = self.avoider.choose_action(obs_av, True)
         collision, dmin = self.find_dMin()
         v = np.zeros(6)
         for i in range(3):
-            if dmin >= self.secure_d:
+            if 1:#dmin >= self.secure_d:
                 v[i] = v_sea[i]
             else:
                 v[i] = (dmin*v_sea[i] + (self.secure_d-dmin)+v_av[i])/self.secure_d
-        v[3], v[4] = self.findV45(self)
+        v[3], v[4] = v4, v5
         self.controller.robot_vel_publish(v)
         
         return collision
         
     
     def moveBill(self, object_target=None):
-        if self.bill_state != 1:
+        if self.bill_state == 0 or self.bill_state == -1:
             self.scheduler_updateTask(1)
-            if self.robot_state == 1:
+            if self.bill_state == 1:
                 self.scheduler_updateTarget(1)
             else:
                 self.controller.billHandPos_publishFun([2,0,0,0])
+                #print('Bill is returning home:)')
                 return
+        elif self.bill_state == 2:
+            self.controller.billHandPos_publishFun([2,0,0,0])
+            #print('Bill is returning home:)')
+            return
         else:
             self.scheduler_updateTarget(1)
-            print(self.target_bill)
+            #print(self.target_bill)
         if object_target is None:
             object_target = self.target_bill
         object_target = np.matmul(self.R_mat, object_target)
@@ -568,29 +606,39 @@ class AI:
         elif  object_str == 'grey':
             self.controller.greyCube_publish(pos)
         elif  object_str == 'sphere':
-            self.controller.sphereCube_publish(pos)
+            self.controller.target_pos_publish(pos)
         else:
             print('Wrong cube passed in moveObject fun:(')
         
         
-    def resetEnv(self):
-        
+    def resetEnv(self): 
         yPosSampled = sample(self.yPos, 6)
-        """
+        
         redCube_pos = [ sample(self.xPos, 1)[0], yPosSampled[0], self.zPos]
         greenCube_pos = [ sample(self.xPos, 1)[0], yPosSampled[1], self.zPos]
         blueCube_pos = [ sample(self.xPos, 1)[0], yPosSampled[2], self.zPos]
         yellowCube_pos = [ sample(self.xPos, 1)[0], yPosSampled[3], self.zPos]
         greyCube_pos = [ sample(self.xPos, 1)[0], yPosSampled[4], self.zPos]
         sphere_pos = [ sample(self.xPos, 1)[0], yPosSampled[5], self.zPos]
-        """
-        redCube_pos = [0.6, -0.3, 0.07]
-        greenCube_pos = [0.12, -0.3, 0.07]
-        blueCube_pos = [0.5, -0.2, 0.07]
-        yellowCube_pos = [0.6, 0.5, 0.07]
-        greyCube_pos = [0.12, 0.5, 0.07]
-        sphere_pos = [0.3, 0.5, 0.07]
         
+        """
+        #due gruppi di oggetti ben definiti
+        redCube_pos = [0.3, 0.5, 0.07]
+        greenCube_pos = [0.6, 0.5, 0.07]
+        blueCube_pos = [0.12, 0.5, 0.07]
+        yellowCube_pos = [0.12, -0.3, 0.07]
+        greyCube_pos = [0.5, -0.3, 0.07]
+        sphere_pos = [0.7, -0.3, 0.07]
+        """
+        """
+        #Questa configurazione ha dato problemi nel calcolo degli indici una volta (dopo alcuni reset automatici), poi non più
+        redCube_pos = [0.25, -0.45, 0.07]
+        greenCube_pos = [0.4, -0.15, 0.07]
+        blueCube_pos = [0.7, 0.15, 0.07]
+        yellowCube_pos = [0.55, 0.3, 0.07]
+        greyCube_pos = [0.5, 0.0, 0.07]
+        sphere_pos = [0.7, -0.3, 0.07]
+        """
         self.controller.redCube_publish(redCube_pos)
         self.controller.greenCube_publish(greenCube_pos)
         
@@ -615,6 +663,15 @@ class AI:
         self.controller.robot_vel_publish(np.zeros(6))
         self.controller.greyCube_publish(greyCube_pos)
         self.controller.target_pos_publish(sphere_pos)
+        self.scheduler.reset()       
+        self.target_bill = np.zeros(3)
+        self.target_robot = np.zeros(3)
+        self.robot_state = -1
+        self.bill_state = -1
+        
+    def resetBillAndUr10e(self):
+        self.controller.billHandPos_publishFun([2,0,0,0])
+        self.controller.robot_pos_publish(reset=True)
         
     
     def isProjectCompleted(self):

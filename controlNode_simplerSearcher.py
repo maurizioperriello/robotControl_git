@@ -8,7 +8,7 @@ Created on Wed Feb 23 22:43:39 2022
 
 import rospy
 from listener_classes import Controller
-from random import randint, uniform
+from random import randint, uniform, choice
 import numpy as np
 from ddpg_classes import Agent
 import pandas as pd
@@ -16,6 +16,10 @@ import pandas as pd
 
 def debugInfo(n):
     print(f'Ciao:) - {n}')
+    
+def readPositionFile(file):
+    position = np.genfromtxt(file)
+    return position
     
 def save_score(score_history, file, append):
     if append:
@@ -239,6 +243,7 @@ if __name__ == '__main__':
         load_checkpoint = True #se True, carica i pesi e la memoria salvati
         evaluate = False #se True, non effettua il learn né il salvataggio dei dati
         select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni
+        changeInitialPosition = True
         
         #meglio inserire anche theta_joints, per mantenere la proprietà di Markov                         
         observation_shape = (12,)  # [target_x-EEx, target_y-EEy, target_z-EEz,
@@ -259,6 +264,9 @@ if __name__ == '__main__':
         #cui si è trovato il robot (posizione dei giunti) al momento della raggiunta
         #del goal: servono per addestrare il bill avoider
         
+        position_file = 'tmp/score/configuration_simplerSearcher_newEnv.csv'
+        startPosition = readPositionFile(position_file)
+        
         print('HAI CAMBIATO IL LOAD?',
               'HAI CAMBIATO IL NOISE?',
               'HAI CAMBIATO EVALUATE?',
@@ -270,7 +278,7 @@ if __name__ == '__main__':
             w += 1
         
         best_score = 0
-        n_games = 8000
+        n_games = 20_000
         n_games += 1 #per far si che al penultimo game si salvi la memoria (viene salvata ogn 100 episode, per non rallentare troppo il processo)
         limit_count = 1500 #numero di iterazioni massime per episode
         score_history = []
@@ -298,6 +306,15 @@ if __name__ == '__main__':
             agent.my_load_models(evaluate=evaluate)
             print('Loading completed:)')
         
+        """
+        #PER CANCELLARE LA MEMORIA
+        input_shape = (12,)        
+        agent.memory.state_memory = np.zeros((1_000_000, *input_shape)) #vettore degli stati presenti
+        agent.memory.new_state_memory = np.zeros((1_000_000, *input_shape)) #vettore degli stati futuri
+        agent.memory.action_memory = np.zeros((1_000_000, 3)) #vettore delle azioni compiute
+        agent.memory.reward_memory = np.zeros(1_000_000) #vettore dei reward ottenuti
+        agent.memory.terminal_memory = np.zeros(1_000_000, dtype=np.bool)
+        """
         #routine di training/evalutation
         for ep in range(n_games):
             if(rospy.is_shutdown()):
@@ -332,6 +349,20 @@ if __name__ == '__main__':
                 remember_iteration = False
             #controller.table_publish(startTablePos)
             #rate.sleep()
+            
+            if changeInitialPosition:
+                startConfig = startPosition[choice(range(len(startPosition)))]
+                controller.robot_pos_publish(startConfig, False)
+                setConfigCompleted = False
+                c = 0
+                while(not setConfigCompleted):
+                    r_pos = np.array(controller.robot_pos).copy()
+                    setConfigCompleted = np.array(
+                            [ r_pos[i]>=startConfig[i]-0.1 and r_pos[i]<=startConfig[i]+0.1 for i in range(6) ]
+                            ).all()
+                    c += 1
+                    if(c == 500_000):
+                        break;
                 
             """
             target_x = round(uniform(0.5, 1.0), 2)

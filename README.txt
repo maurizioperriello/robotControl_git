@@ -6,6 +6,9 @@ FILE:
 
 
 CHANGELOG:
+5.1:
+	-Miglioramento e correzione bug ai files "AI_classe.py" e "finalControlNode.py"; piccola modifica alla scena finale (senza tavolo) di CoppeliaSim
+
 5.0:
 	-Si modificano le scene di CoppeliaSim e si realizzano i file per la simulazione definitiva
 
