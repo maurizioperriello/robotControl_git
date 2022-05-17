@@ -209,7 +209,7 @@ class Scheduler:
         cubes_pos.append(np.array(self.scController.yellowCube_pos).copy())
         cubes_pos.append(np.array(self.scController.greyCube_pos).copy())
         cubes_pos.append(np.array(self.scController.target_pos).copy())
-        #print(cubes_pos)
+        print(cubes_pos)
         bill_d = []
         for i in range(len(cubes_pos)):
             RX_d = np.linalg.norm([ a-b for a,b in zip(cubes_pos[i],RightHand_pos) ])
@@ -225,9 +225,21 @@ class Scheduler:
         sort_bill_d = sort_bill_d[0:3]
         #print(f'new_sort_d = {sort_bill_d}')
         index_bill_task = []
+        """
         for val in sort_bill_d:
             ind = bill_d.index(val)
             index_bill_task.append(ind)
+        """
+        old_val = None
+        eqVal_n = 0
+        for val in sort_bill_d:
+            if val == old_val:
+                eqVal_n += 1
+            else:
+                eqVal_n = 0 
+            indices = [i for i, x in enumerate(bill_d) if x == val]
+            index_bill_task.append(indices[eqVal_n])
+            old_val = val
         #index_bill_task = [ np.where(bill_d == sort_bill_d[i]) for i in range(3) ]
         index_robot_task = [ ind_r for ind_r in range(6) if ind_r not in index_bill_task ]
         #print(f'Bill index: {index_bill_task}', f'ur10e index: {index_robot_task}', sep='\n')
@@ -292,7 +304,9 @@ class AI:
                                [0, 0, 1]])
         self.tr_vect = np.array([0.75, 0.0, 1.0])
         
-        self.secure_d = 0.30
+        self.secure_d = 0.50
+        self.warning_d = 0.25
+        self.red_fact = 0.5 #fattore di riduzione delle velocità effettive applicate
         self.dt = 0.05
         
         self.searcher = Agent(input_dims=inputDim_searcher, n_actions=3, fc1=fc1_searcher,
@@ -352,7 +366,7 @@ class AI:
             theta_target = np.zeros(3)
             #vel_joints = np.array(self.controller.robot_vel).copy()
             for i in range(3):
-                theta_target[i] = theta_joints[i] + v_searcher[i]*self.dt*5
+                theta_target[i] = theta_joints[i] + v_searcher[i]*self.dt*2
         EE_pos = self.controller.EE_pos.copy()
         EE_vel = self.controller.EE_vel.copy()
         billLimbs = np.array(self.controller.billLimb_spatialPos).copy()
@@ -548,10 +562,12 @@ class AI:
         collision, dmin = self.find_dMin()
         v = np.zeros(6)
         for i in range(3):
-            if 1:#dmin >= self.secure_d:
-                v[i] = v_sea[i]
+            if dmin >= self.secure_d:
+                v[i] = self.red_fact*v_sea[i]
+            elif dmin <= self.warning_d:
+                v[i] = self.red_fact*v_av[i]*1.8
             else:
-                v[i] = (dmin*v_sea[i] + (self.secure_d-dmin)+v_av[i])/self.secure_d
+                v[i] = self.red_fact*(dmin*v_sea[i] + (self.secure_d-dmin)*v_av[i])/self.secure_d
         v[3], v[4] = v4, v5
         self.controller.robot_vel_publish(v)
         

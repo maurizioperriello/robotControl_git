@@ -73,6 +73,8 @@ def give_reward(d_history, ctrl, v, old_v):
     
     objPos = np.array(ctrl.target_pos).copy()
     EEpos = ctrl.EE_pos.copy()
+    robot_acc = np.array(ctrl.robot_acc).copy()
+    acc_r = 5*np.linalg.norm(robot_acc[0:3]) #dopo 80k ep si passa da 0.5 a 4
     
     d = 0
     for i in range(np.size(objPos)):
@@ -84,13 +86,13 @@ def give_reward(d_history, ctrl, v, old_v):
     c = [ 1.5 if dv[i]>max_dv else 0 for i in range(3) ]
     r = sum( [ x*y for (x, y) in zip(c, dv) ] )
     """
-    r2 = 1.2*np.linalg.norm(v)
+    r2 = 15*np.linalg.norm(v) #dopo 80k ep si passa da 2 a 10
     
-    #table_r = 100 if EEpos[2] < 0.36 else 0 #reward per evitare che l'EE tocchi il tavolo
+    table_r = 100 if EEpos[2] < 0.05 else 0 #reward per evitare che l'EE tocchi il tavolo
     
-    a = 10
-    reward = - a*d - r2 #- r # - table_r
-    
+    a = 20
+    reward = - a*d - r2 - acc_r - table_r
+    #print(f'acc_r = {acc_r} \n r = {a*d} \n v_r = {r2}')
     d_history.append(d)
     #d_history non viene utilizzato, ma può tornare utile per visualizzare
     #lo storico delle distanze volta per volta
@@ -245,16 +247,21 @@ if __name__ == '__main__':
         select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni
         changeInitialPosition = True
         
+        cancel_rememberIteration = True #se True, consente di salvare sempre tutte le iterazioni, anche quando non avviene correttamente il reset
+        
+        reduction_factor = 0.5 #fattore di riduzione delle velocità del robot
+                
         #meglio inserire anche theta_joints, per mantenere la proprietà di Markov                         
         observation_shape = (12,)  # [target_x-EEx, target_y-EEy, target_z-EEz,
                                   #  EE_vx, EE_vy, EE_vz]  
         
         #start at 0.1
-        noise = 0.0
+        noise = 0.15
               
         agent = Agent(input_dims=observation_shape, n_actions=3, noise=noise,
                       chkpt_dir='tmp/ddpg_simplerSearcher_newEnv',
-                      memory_dir='tmp/memory_simplerSearcher_newEnv')
+                      memory_dir='tmp/memory_simplerSearcher_newEnv',
+                      reduction_factor=reduction_factor)
         #l'uscita servirà a controllare solo i primi 3 gradi di libertà,
         #mentre gli altri saranno impostati diversamente
         
@@ -278,7 +285,7 @@ if __name__ == '__main__':
             w += 1
         
         best_score = 0
-        n_games = 20_000
+        n_games = 35_000
         n_games += 1 #per far si che al penultimo game si salvi la memoria (viene salvata ogn 100 episode, per non rallentare troppo il processo)
         limit_count = 1500 #numero di iterazioni massime per episode
         score_history = []
@@ -306,7 +313,7 @@ if __name__ == '__main__':
             agent.my_load_models(evaluate=evaluate)
             print('Loading completed:)')
         
-        """
+        
         #PER CANCELLARE LA MEMORIA
         input_shape = (12,)        
         agent.memory.state_memory = np.zeros((1_000_000, *input_shape)) #vettore degli stati presenti
@@ -314,7 +321,7 @@ if __name__ == '__main__':
         agent.memory.action_memory = np.zeros((1_000_000, 3)) #vettore delle azioni compiute
         agent.memory.reward_memory = np.zeros(1_000_000) #vettore dei reward ottenuti
         agent.memory.terminal_memory = np.zeros(1_000_000, dtype=np.bool)
-        """
+        
         #routine di training/evalutation
         for ep in range(n_games):
             if(rospy.is_shutdown()):
@@ -350,7 +357,12 @@ if __name__ == '__main__':
             #controller.table_publish(startTablePos)
             #rate.sleep()
             
-            if changeInitialPosition:
+            if ep >= 30_000:
+                changeInitialPosition = True
+                
+            change = choice([0,1])
+            
+            if changeInitialPosition and change:
                 startConfig = startPosition[choice(range(len(startPosition)))]
                 controller.robot_pos_publish(startConfig, False)
                 setConfigCompleted = False
@@ -417,7 +429,7 @@ if __name__ == '__main__':
                 
                 score += reward #aggiornamento dello score dell'episode
              
-                if remember_iteration:
+                if remember_iteration or cancel_rememberIteration:
                     if select_remember:
                         if(done==1 or reward>old_reward):
                             #il salvataggio in memoria si effettua solo se il punteggio aumenta rispetto all'iterazione precedente o se si è raggiunto il target

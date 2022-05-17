@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Dec 22 11:44:51 2021
+Created on Tue May 17 11:41:38 2022
 
 @author: mauri
 """
@@ -57,10 +57,7 @@ class Controller:
                  EEvel_subs='ee_velocity', targetPos_subs='target_pos',
                  robot_subs='joints_value',
                  spatialPosRobotJoints_subs='spatialPos_joints',
-                 selfCollisionRobot_subs='collision_robot',
-                 globalCollisionRobot_subs='global_robot_collision',
                  spatialPosFinalLinks_subs='spatialPos_finalLinks',
-                 table_pubTopic='table_pose',
                  redCube_pubTopic='redCube_posDef', greenCube_pubTopic='greenCube_posDef',
                  blueCube_pubTopic='blueCube_posDef', yellowCube_pubTopic='yellowCube_posDef',
                  greyCube_pubTopic='greyCube_posDef', redCube_subs='redCube_target_pos',
@@ -86,8 +83,6 @@ class Controller:
                                                  queue_size=10)
         self.pub_reset_robot = rospy.Publisher(resetRobot_pubTopic,
                                                Bool, queue_size=10)
-        self.pub_table_pose = rospy.Publisher(table_pubTopic,
-                                              Float64MultiArray, queue_size=10)
         self.pub_redCube_pos = rospy.Publisher(redCube_pubTopic,
                                                Float64MultiArray, queue_size=10)
         self.pub_greenCube_pos = rospy.Publisher(greenCube_pubTopic,
@@ -147,12 +142,6 @@ class Controller:
         self.sub_joints_spatialPos = rospy.Subscriber(spatialPosRobotJoints_subs,
                                                       Float64MultiArray,
                                                       self.joints_spatialPos_callback)
-        self.sub_selfCollision_robot = rospy.Subscriber(selfCollisionRobot_subs,
-                                                        Int8MultiArray,
-                                                        self.robot_selfCollision_callback)
-        self.sub_globalCollision_robot = rospy.Subscriber(globalCollisionRobot_subs,
-                                                        Float64,
-                                                        self.robot_globalCollision_callback)
         self.sub_finalLinks_spatialPos = rospy.Subscriber(spatialPosFinalLinks_subs,
                                                           Float64MultiArray,
                                                           self.finalLinks_spatialPos_callback)
@@ -199,50 +188,7 @@ class Controller:
         self.greyCube_pos = np.zeros(3)
         
         
-        ###################
-        #   Bill
-        ###################
-        
-        #Publishers
-        """
-        self.vel_pub = rospy.Publisher('bill_velocity', Float64MultiArray,
-                                       queue_size=10)
-        self.reset_pub = rospy.Publisher('bill_reset', Bool,
-                                         queue_size=10)
-        """
-        self.billHand_pub = rospy.Publisher('bill_handPose', Float64MultiArray,
-                                            queue_size=10)
-        
-        #Publisher Msg
-        """
-        self.vel_msg = Float64MultiArray()
-        self.vel_msg.data = np.zeros(10)
-        
-        self.reset_msg = Bool()
-        self.reset_msg.data = True
-        """
-        
-        self.billHand_msg = Float64MultiArray()
-        self.billHand_msg.data = np.zeros(4)
-        
-        #Subscriber
-        """
-        self.sub_spatialPose = rospy.Subscriber('bill_spatialPose',
-                                                Float64MultiArray,
-                                                self.spatialPose_callback)
-        """
-        self.billLimb_position_sub = rospy.Subscriber('bill_limbPosition',
-                                                  Float64MultiArray,
-                                                  self.billLimbPos_callback)
-        
         #Subscriber Data
-        """
-        self.spatialPose = [ [ 0 for _ in range(3) ]
-                            for _ in range(8) ]
-        #la velocità è uguale a quella impostata, perciò
-        #si può recuperare direttamente dal dato impostato e 
-        #non da CoppeliaSim
-        """
         self.billLimb_spatialPos = [ [ 0 for _ in range(3) ]
                                     for _ in range(8) ]
         self.billLimb_spatialVel = [ [ 0 for _ in range(3) ]
@@ -284,11 +230,6 @@ class Controller:
     def robot_reset_publish(self):
         self.pub_reset_robot.publish(self.reset_robot_msg)
         #self.rate.sleep()    
-        
-    def table_publish(self, pos):
-        self.table_pos_msg.data = pos
-        self.pub_table_pose.publish(self.table_pos_msg)
-        #self.rate.sleep()
         
     def redCube_publish(self, pos):
         self.redCube_pos_msg.data = pos
@@ -390,45 +331,5 @@ class Controller:
     
     def get_finalLinks_spatialPos(self):
         return self.finalLinks_spatialPos
-    
-    
-    ###################
-    #Bill stuff
-    ###################
-    """
-    #Publish functions
-    def vel_publishFun(self, v):
-        self.vel_msg.data = v
-        self.vel_pub.publish(self.vel_msg)
-        #self.rate.sleep()    
-    def reset_publishFun(self):
-        self.reset_pub.publish(self.reset_msg)
-        #self.rate.sleep()
-       
-    #Callback function    
-    def spatialPose_callback(self, msg):
-        self.sub_spatialPose = [ [ msg.data[j] for j in range(3*i, 3+3*i) ]
-                                for i in range(8) ]
-    """
-    #Publish functions  
-    def billHandPos_publishFun(self, pos):
-        self.billHand_msg.data = pos
-        self.billHand_pub.publish(self.billHand_msg)
-        #self.rate.sleep()
-        
-    #Callback function
-    def billLimbPos_callback(self, msg):
-        check = False
-        old_spatialPos = self.start_billLimb_vect
-        if(self.billLimb_spatialPos != self.start_billLimb_vect):
-            check = True
-            old_spatialPos = self.billLimb_spatialPos
-        
-        self.billLimb_spatialPos = [ [ msg.data[j] for j in range(3*i, 3+3*i) ]
-                                    for i in range(8) ]
-        if check:
-            self.billLimb_spatialVel = [ [ (self.billLimb_spatialPos[i][j]-old_spatialPos[i][j])/0.05
-                                          for j in range(3) ] 
-                                            for i in range(8) ]
-        
+
         

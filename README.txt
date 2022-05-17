@@ -6,6 +6,9 @@ FILE:
 
 
 CHANGELOG:
+5.2:
+	-Miglioramenti vari; prima versione della classe controller per il robot vero
+
 5.1:
 	-Miglioramento e correzione bug ai files "AI_classe.py" e "finalControlNode.py"; piccola modifica alla scena finale (senza tavolo) di CoppeliaSim
 

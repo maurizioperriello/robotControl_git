@@ -12,6 +12,7 @@ import numpy as np
 from random import randint, uniform, choice
 from ddpg_classes import Agent
 from utils import pnt2line, saveContext, restoreContext
+import pandas as pd
 
 __saved_context__ = {}
 
@@ -97,8 +98,8 @@ def observe(ctrl, target_pos):
 def give_reward(ctrl, v, old_v, obs, old_obs):
     dv_max = 0.26
     sft_d = 0.45 #distanza di sicurezza
-    a1 = 100
-    a2 = 10
+    a1 = 200
+    a2 = 60
     b = 600
     selfCollisionRobot = ctrl.selfCollision_bool
     globalCollisionRobot = ctrl.globalCollision_bool
@@ -165,7 +166,7 @@ def check_operator_collision(ctrl):
     limbSelector = [4, 6, 7]
     points = []
     points.append(EE_pos)
-    for i in range(5, 0, -1):
+    for i in range(4, 0, -1):
         points.append(spatialPos_joints_robot[i])
 
     d_min = 100 #distanza minima tra le varie distanze calcolate
@@ -199,6 +200,12 @@ def check_operator_collision(ctrl):
                     d_min = d
         d_min_vector.append(d_limbs[d_limbs.index(min(d_limbs))])
     distance_bool = d_min>0.6
+    
+    """
+    print(f'robot_points = {points}',
+          f'op_points = {point_op}',
+          f'check = {len(check_d)}', sep='\n')
+    """
     
     if(np.array(check_d).any()):
         print(f'd_vector_collision: {d_min_vector}')
@@ -334,9 +341,12 @@ if __name__ == '__main__':
         
         load_checkpoint = True
         evaluate = False
+        cancelMemory = False
         
         #noise start at 0.1
-        noise = 0.0
+        noise = 0.01
+        
+        reductionFactor = 0.5
         
         observation_shape = (33,)
         #  [head_x, head_y, head_z,
@@ -350,17 +360,23 @@ if __name__ == '__main__':
         agent = Agent(input_dims=observation_shape, n_actions=3,
                       chkpt_dir='tmp/ddpg_billAvoider',
                       memory_dir='tmp/memory_billAvoider', noise=noise,
-                      fc1=900, fc2=600, fc3=300)        
+                      fc1=900, fc2=600, fc3=300,
+                      reduction_factor=reductionFactor)        
         
         best_score = 0
-        n_games = 10_000
+        n_games = 30_000
         n_games += 1
         limit_count = 1500
         score_history = []
         
+        billHandPos_v = []
+        billHand_obj = []
+        
         #position_file = 'tmp/configuration_simplerSearcher.csv'
         position_file = 'tmp/score/configuration_simplerSearcher_newEnv.csv'
         startPosition = readPositionFile(position_file)
+
+        loadMemory = evaluate or cancelMemory
 
         if load_checkpoint:
             print('Loading model ...')
@@ -376,7 +392,7 @@ if __name__ == '__main__':
                 agent.remember(observation, np.zeros(3), reward, observation_, done)
                 n_steps += 1
             agent.learn()
-            agent.my_load_models(evaluate=evaluate)
+            agent.my_load_models(evaluate=loadMemory)
             print('Loading completed:)')
         
         for i in range(n_games):
@@ -389,7 +405,7 @@ if __name__ == '__main__':
             
             controller.billHandPos_publishFun([2, 0, 0, 0]) #reset position
             #rate.sleep()
-            wait(rate, 250)
+            wait(rate, 100)
             
             #controller.table_publish(resetTablePos)
             #rate.sleep()
@@ -445,7 +461,10 @@ if __name__ == '__main__':
             
             old_action = np.zeros(6)
             
-                        
+            billMove = False
+            billHandVect = []
+            handSel = None
+            
             while not done:
                 if(rospy.is_shutdown()):
                     print('ROS is shutdown:(')
@@ -464,26 +483,37 @@ if __name__ == '__main__':
                 
                 if(count % 300 == 0 or count == 1):
                     #controller.billHandPos_publishFun([2, 0, 0, 0])
+                    billMove = True
+                    billHandVect = []
                     hand = choice([0,1])
                     #[ VEDI OLDfun.py per versione alternativa di "BILL CODE" ]
                     if hand==0: 
                         #right hand
+                        handSel = 6
                         hand_pos = [round(uniform(xLim_right[0], xLim_right[1]), 2),
                                     round(uniform(yLim_right[0], yLim_right[1]), 2),
                                     round(uniform(zLim[0], zLim[1]), 2)]
                     else: 
                         #left hand
+                        handSel = 7
                         hand_pos = [round(uniform(xLim_left[0], xLim_left[1]), 2),
                                     round(uniform(yLim_left[0], yLim_left[1]), 2),
                                     round(uniform(zLim[0], zLim[1]), 2)]
                     bill_cmd = np.append(hand, hand_pos)
                     controller.billHandPos_publishFun(bill_cmd)
+                    billHand_obj.append(hand_pos)
                     #rate.sleep()
                     
-                if(count % 500 == 0):
+                if billMove:
+                    billHandVect.append(list(np.array(controller.billLimb_spatialPos).copy()[handSel]))
+                    
+                if(count % 500 == 0 or count == 201):
+                    billMove = False
+                    billHandPos_v.append(billHandVect.copy())
+                    billHandVect = []
                     controller.billHandPos_publishFun([2, 0, 0, 0])
                     #rate.sleep()
-                    
+                
                 observation_ = observe(controller, target_pos)
                 reward = give_reward(controller, action, old_action, observation_, observation)
                 old_action = action
@@ -518,7 +548,11 @@ if __name__ == '__main__':
             """
             if(rospy.is_shutdown()):
                 restoreContext(__saved_context__)
-            """               
+            """       
+            
+        billPos_df = pd.DataFrame(list(zip(billHandPos_v, billHandVect)),
+                                     columns=['position', 'target'])
+        billPos_df.to_csv('tmp/bill.csv')
         
     except rospy.ROSInterruptException:
         pass

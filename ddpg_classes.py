@@ -72,7 +72,8 @@ class CriticNetwork(keras.Model):
 #ACTOR NETWORK
 class ActorNetwork(keras.Model):
     def __init__(self, fc1_dims=512, fc2_dims=512, fc3_dims=512, n_actions=6,
-                 name='actor', chkpt_dir='tmp/ddpg', model_dir='tmp/model'):
+                 name='actor', chkpt_dir='tmp/ddpg', model_dir='tmp/model',
+                 reduction_factor=1.0):
         super(ActorNetwork, self).__init__()
         self.fc1_dims = fc1_dims
         self.fc2_dims = fc2_dims
@@ -85,6 +86,8 @@ class ActorNetwork(keras.Model):
                                             self.model_name+'_ddpg.h5')
         self.model_file = os.path.join(self.model_dir,
                                        self.model_name+'_model.h5py')
+        
+        self.reduction_factor = reduction_factor
         
         #NN
         self.fc1 = Dense(self.fc1_dims, activation='relu')
@@ -100,6 +103,7 @@ class ActorNetwork(keras.Model):
         
         #se si vuole cambiare il limite delle azioni, basta moltiplicare qui per opportuni coefficienti
         act = self.mu(act)
+        act = tf.math.scalar_mul(self.reduction_factor, act)
         return act
         
 
@@ -191,7 +195,8 @@ class Agent:
     def __init__(self, input_dims, alpha=0.001, beta=0.002, action_limit=[-1, 1],
                  gamma=0.99, n_actions=6, max_size=1_000_000, tau=0.005,
                  fc1=600, fc2=400, fc3=200, batch_size=64, noise=0.1,
-                 chkpt_dir='tmp/ddpg', memory_dir='tmp/memory'):
+                 chkpt_dir='tmp/ddpg', memory_dir='tmp/memory',
+                 reduction_factor=1.0):
         self.gamma = gamma #discount factor, peso del reward futuro rispetto a quello attuale
         self.n_actions = n_actions #dimensione dello spazio delle azioni
         self.tau = tau #coefficiente che controlla il soft update delle reti target rispetto alle altre due
@@ -205,11 +210,13 @@ class Agent:
 
         #definizione delle 4 reti dell'agente
         self.actor = ActorNetwork(fc1_dims=fc1, fc2_dims=fc2, fc3_dims=fc3,
-                                  n_actions=n_actions, name='actor',chkpt_dir=chkpt_dir)
+                                  n_actions=n_actions, name='actor',chkpt_dir=chkpt_dir,
+                                  reduction_factor=reduction_factor)
         self.critic = CriticNetwork(fc1_dims=fc1, fc2_dims=fc2, fc3_dims=fc3,
                                     name='critic',chkpt_dir=chkpt_dir)
         self.target_actor = ActorNetwork(fc1_dims=fc1, fc2_dims=fc2, fc3_dims=fc3,
-                                         n_actions=n_actions, name='target_actor',chkpt_dir=chkpt_dir)
+                                         n_actions=n_actions, name='target_actor',chkpt_dir=chkpt_dir,
+                                         reduction_factor=reduction_factor)
         self.target_critic = CriticNetwork(fc1_dims=fc1, fc2_dims=fc2, fc3_dims=fc3,
                                            name='target_critic',chkpt_dir=chkpt_dir)
         
