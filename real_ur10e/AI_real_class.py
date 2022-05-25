@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Fri Apr 15 11:33:40 2022
+Created on Thu May 19 14:54:20 2022
 
 @author: mauri
 """
 
 import numpy as np
-from random import sample
+from numpy import tanh
 from ddpg_classes import Agent
-from listener_classes import Controller
-from utils import pnt2line
+from controller_real_class import Controller
+from utils import pnt2line, AH
 
 
 class Scheduler:
@@ -46,8 +46,7 @@ class Scheduler:
         self.robotFinish = False
         self.billFinish = False
 
-        
-    
+         
     def changeProject(self, project):
         self.project = project
         
@@ -304,30 +303,29 @@ class AI:
                                [0, 0, 1]])
         self.tr_vect = np.array([0.75, 0.0, 1.0])
         
+        self.t_vect_EE = [-0.6, 0.0, 0.0]
+        self.t_vect_optitrack = []
+        
         self.secure_d = 0.50
         self.warning_d = 0.25
-        self.red_fact = 1.0 #fattore di riduzione delle velocità effettive applicate
+        self.red_fact = 0.5 #fattore di riduzione delle velocità effettive applicate
         self.dt = 0.05
         
         #Velocity Filter Parameters
         self.useFilter = False
         self.action_cntr = 0
-        self.speedVect_size = 10
-        self.speed_vect = [ [ 0.0 for _ in range(self.speedVect_size) ] 
+        self.speedVect_size = 5
+        self.speed_vect = [ [ 0.0 for _ in range(self.vect_size) ] 
                                for c in range(3) ]
         
-        self.reduction_factor = 0.5
+        self.start_robot_conf = [0.0, -1.57, 1.57, -1.57, 4.71, 2.36]
         
         self.searcher = Agent(input_dims=inputDim_searcher, n_actions=3, fc1=fc1_searcher,
                               fc2=fc2_searcher, fc3=fc3_searcher,
-                              chkpt_dir=modelPath_searcher,
-                              memory_dir='tmp/memory_simplerSearcher',
-                              reduction_factor=self.reduction_factor)
+                              chkpt_dir=modelPath_searcher, memory_dir='tmp/memory_simplerSearcher')
         self.avoider = Agent(input_dims=inputDim_avoider, n_actions=3, fc1=fc1_avoider,
                               fc2=fc2_avoider, fc3=fc3_avoider,
-                              chkpt_dir=modelPath_avoider,
-                              memory_dir='tmp/memory_billAvoider',
-                              reduction_factor=self.reduction_factor)
+                              chkpt_dir=modelPath_avoider, memory_dir='tmp/memory_billAvoider')
         self.controller = Controller()
         self.rate = self.controller.rate
         
@@ -339,11 +337,6 @@ class AI:
         self.scheduler = Scheduler(project, self.controller)
         self.robot_state = -1
         self.bill_state = -1
-        
-        #Object position
-        self.xPos = [ 0.25+0.15*i for i in range(3) ]
-        self.yPos = [-0.45+0.15*i for i in range(6) ]
-        self.zPos = 0.07
         
         self.load_weights()
         
@@ -359,8 +352,11 @@ class AI:
     
     def reset_speed_filter(self):
         self.action_cntr = 0
-        self.speed_vect = [ [ 0.0 for _ in range(self.speedVect_size) ] 
-                               for c in range(3) ]
+        self.speed_vect = [ [ 0.0 for _ in range(self.vect_size) ] 
+                               for c in range(3) ]        
+        
+    def rate_sleep(self):
+        self.rate.sleep()          
     
     def observe_searcher(self, target_pos=None):
         EE_pos, EEvel = self.controller.EE_pos.copy(), self.controller.EE_vel.copy()
@@ -386,30 +382,30 @@ class AI:
     
     
     def observe_avoider(self, v_searcher, theta_target=None):
-        theta_joints = np.array(self.controller.robot_pos).copy()
+        theta_joints = np.array(self.controller.robot_th).copy()
         if theta_target is None:
             theta_target = np.zeros(3)
-            #vel_joints = np.array(self.controller.robot_vel).copy()
             for i in range(3):
-                theta_target[i] = theta_joints[i] + v_searcher[i]*self.dt*2
+                theta_target[i] = theta_joints[i] + v_searcher[i]*self.dt#*2
         EE_pos = self.controller.EE_pos.copy()
         EE_vel = self.controller.EE_vel.copy()
-        billLimbs = np.array(self.controller.billLimb_spatialPos).copy()
-        billLimbs_vel = np.array(self.controller.billLimb_spatialVel).copy()
-        limbSelector = [4, 6, 7] #testa, mano destra, mano sinistra
+        billLimbs = [ np.array(self.controller.opHead_pos).copy(), 
+                      np.array(self.controller.opRightHand_pos).copy(),
+                      np.array(self.controller.opLeftHand_pos).copy() ]
+        billLimbs_vel = [ np.array(self.controller.opHead_vel).copy(), 
+                          np.array(self.controller.opRightHand_vel).copy(),
+                          np.array(self.controller.opLeftHand_vel).copy() ]
         
         obs = []
         
-        for l in limbSelector:
+        for l in range(3):
             for k in range(3):
                 obs.append(billLimbs[l][k])
             for h in range(3):
                 obs.append(billLimbs_vel[l][h])                
-        for i in range(3):
-            #obs.append(object_pos[i]) 
+        for i in range(3): 
             obs.append(theta_target[i])            
-        for i in range(3):
-            #obs.append(object_pos[i]-EE_pos[i])   
+        for i in range(3):   
             obs.append(theta_target[i]-theta_joints[i])          
         for i in range(3):
             obs.append(EE_pos[i])               
@@ -421,38 +417,36 @@ class AI:
         return obs
     
     
-    def checkRobotTarget(self):
-        #funzione per controllare se il risultato è stato raggiunto o meno:
-        #per farlo, bisogna arrivare in prossimità del target (sfera bianca) con
-        #una velocità inferiore o ugule a 0.1 m/s
-        delta = 0.02 
+    def checkRobotTarget(self):        
+        delta = 0.1 
         d_goal = 0.15
         
-        EEpos = self.controller.EE_pos.copy() #se possibile, si effettua sempre la copia dei valori della classe controller
-        objPos = np.array(self.target_robot).copy()
-        finalLinks = self.controller.finalLinks_spatialPos.copy()
-        joints_spatialPos = self.controller.joints_spatialPos
+        alpha, beta = self.controller.EE_orientation.copy()[0], \
+                        self.controlle.EE_orientation.copy()[1]
+        alpha_target, beta_target = -1.56, 0.0
+        
+        EEpos = self.controlle.EE_pos.copy() #se possibile, si effettua sempre la copia dei valori della classe controller
+        objPos = np.array(self.controlle.target_pos).copy()
         
         d = 0
         for i in range(np.size(objPos)):
             d = d + (objPos[i] - EEpos[i])**2
         d = np.sqrt(d)
-        
-        EE_angles = [finalLinks[0][0] - finalLinks[1][0], finalLinks[0][1] - finalLinks[1][1]]
-        z_check = finalLinks[1][2] < finalLinks[0][2]
     
         check_bools_pos = d <= d_goal and EEpos[2] >= objPos[2]
-        check_angles = [ EE_angles[i]>=-delta and EE_angles[i]<=delta
-                        for i in range(2) ]
-        check_EE_pos = joints_spatialPos[4][0] > joints_spatialPos[3][0] #in questo modo l'EE non è girato ma rivolto in avanti
-        
+        check_angles = [ alpha-alpha_target<=delta and alpha-alpha_target>=-delta,
+                         beta-beta_target<=delta and beta-beta_target>=-delta]
+    
         check_bools = np.append(check_bools_pos, check_angles)
-        check_bools = np.append(check_bools, z_check)
-        check_bools = np.append(check_bools, check_EE_pos)
         taskCompleted = np.array(check_bools).all()
         if taskCompleted and self.robot_state != 2:
+            self.controller.robot_vel_publish(np.zeros(6))
+            #self.rate.sleep()
             cubeName, cubePos, pickOrPlaceBool = self.scheduler_getCurrentTask(0)
             print('ur10e task completed: {}, {}'.format(cubeName, pickOrPlaceBool))
+            x = input('Move Object, then press enter')
+            while(x != ''):
+                x = input('Move Object, then press enter')
             self.moveObject(cubeName, cubePos, pickOrPlaceBool)
             self.scheduler_clearTask(0)
             self.scheduler_updateTask(0)
@@ -463,9 +457,8 @@ class AI:
 
     
     def checkBillTarget(self):
-        point_op = np.array(self.controller.billLimb_spatialPos).copy()
-        RX_hand = point_op[6]
-        LX_hand = point_op[7]
+        RX_hand = np.array(self.controller.opRightHand_pos).copy()
+        LX_hand = np.array(self.controller.opLeftHand_pos).copy()
         d_min = 0.1
         rx_d = np.linalg.norm([ RX_hand[i]-self.target_bill[i] for i in range(3) ])
         lx_d = np.linalg.norm([ LX_hand[i]-self.target_bill[i] for i in range(3) ])
@@ -473,7 +466,6 @@ class AI:
         if taskCompleted and self.bill_state != 2:
             cubeName, cubePos, pickOrPlaceBool = self.scheduler_getCurrentTask(1)
             print('Bill task completed: {}, {}'.format(cubeName, pickOrPlaceBool))
-            self.moveObject(cubeName, cubePos, pickOrPlaceBool)
             self.scheduler_clearTask(1)
             self.scheduler_updateTask(1)
             self.target_bill = np.zeros(3)
@@ -502,15 +494,31 @@ class AI:
         self.avoider.my_load_models(evaluate=True)
         print('Loading completed:)')
         
+    def computeSpatialPosJoints(self):
+        #TODO: rimuovere i 90deg dal giunto 0 prima di effettuare il calcolo!
+        theta = np.array(self.controller.robot_th).copy()
+        A_1 = AH(1, theta, 0)
+        A_2 = AH(2, theta, 0)
+        A_3 = AH(3, theta, 0)
+        A_4 = AH(4, theta, 0)
+        A_5 = AH(5, theta, 0)
+        T = [ A_1,
+              A_1*A_2,
+              A_1*A_2*A_3,
+              A_1*A_2*A_3*A_4,
+              A_1*A_2*A_3*A_4*A_5 ]
+        spatialPos_joints_robot = [ [ T[i][j,3]-self.t_vect_EE[j] for j in range(3) ]
+                                    for i in range(5) ]
+        return spatialPos_joints_robot
         
     def find_dMin(self):
-        #RIDURRE IL NUMERO DI PARAGONI (USARE index=[2,4]?)
-        spatialPos_joints_robot = self.controller.joints_spatialPos.copy()
-        point_op = np.array(self.controller.billLimb_spatialPos).copy()
+        spatialPos_joints_robot = self.computeSpatialPosJoints()
+        point_op = [ np.array(self.controller.opHead_pos).copy(), 
+                     np.array(self.controller.opRightHand_pos).copy(),
+                     np.array(self.controller.opLeftHand_pos).copy() ]
         EE_pos = self.controller.EE_pos.copy()
     
         coll_d = 0.15 #minima distanza (di sicurezza) entro la quale si considera una collisione
-        limbSelector = [4, 6, 7]
         points = []
         points.append(EE_pos)
         for i in range(5, 0, -1):
@@ -519,18 +527,14 @@ class AI:
         d_min = 100 #distanza minima tra le varie distanze calcolate
 
         check_d = []
-        d_max = 0
         for k in range(len(points)-1):
             d_limbs =  []
             for l in range(len(point_op)):
                 d, _ = pnt2line(point_op[l], points[k], points[k+1])
                 check_d.append(d <= coll_d)
-                if(d > d_max):
-                    d_max = d
-                if(l in limbSelector):
-                    d_limbs.append(d)
-                    if d<d_min:
-                        d_min = d
+                d_limbs.append(d)
+                if d<d_min:
+                    d_min = d
         collisionBool = np.array(check_d).any()
         if collisionBool:
             print('Collision:(')
@@ -547,20 +551,31 @@ class AI:
         return self.bill_state
     
     
-    def findV45(self):
-        k = 30 #si parte da 10, funziona ma è lento
-        finalLinks = self.controller.finalLinks_spatialPos.copy()
-        EE_alpha = finalLinks[0][0] - finalLinks[1][0] #differenza tra le coordinate x del terzultimo link e dell'EE
-        EE_beta = finalLinks[0][1] - finalLinks[1][1]
-        z_check = finalLinks[1][2] < finalLinks[0][2]
-        d = np.sqrt(EE_alpha**2 + EE_beta**2)
-        d1r4 = 1 if finalLinks[0][0]>finalLinks[1][0] else 0 #perché "dir" è meglio non usarlo
-        d1r5 = 0 if finalLinks[0][1]>finalLinks[1][1] else 1
-        v4 = k * d * (-1)**d1r4 if z_check else 0.7
-        v5 = k * d * (-1)**d1r5 if z_check else 0.7
-        
+    def findV45(self, ctrl):
+        #TODO: controllare dir e k!!!
+        k = 10
+        max_v = 0.5
+        alpha, beta = ctrl.EE_orientation.copy()[0], ctrl.EE_orientation.copy()[1]
+        alpha_target, beta_target = -1.56, 0.0
+        d1r4 = 0 if beta < beta_target else 1
+        d1r5 = 1 if beta < beta_target else 0
+        mag = np.sqrt((alpha-alpha_target)**2 + (beta-beta_target)**2)
+        v4 = max_v * tanh(mag/k) * (-1)**d1r4 # if ... else 0.4
+        v5 = max_v * tanh(mag/k) * (-1)**d1r5 # if ... else 0.4
         return v4, v5
     
+    def reset_robot_conf(self):
+        #TODO: controllare dir
+        k = 10
+        max_v = 0.5
+        theta = np.array(self.controller.robot_th).copy()[0:3]
+        theta_target = self.start_robot_conf[0:3]
+        v = np.zeros(6)
+        for i in range(3):
+            d1r = 0 if theta[i]<theta_target[i] else 1
+            v[i] = max_v * tanh(abs(theta[i]-theta_target[i])/k) * (-1)**d1r
+        v[3], v[4] = self.findV45(self.controller)
+        return v        
     
     def doAction(self, target_pos=None, theta_target=None):
         if self.robot_state == 0 or self.robot_state == -1:
@@ -568,12 +583,17 @@ class AI:
             if self.robot_state == 1:
                 self.scheduler_updateTarget(0)
             else:
-                self.controller.robot_pos_publish(reset=True)
+                #TODO: anziché fare questo si può impostare un target lontano e in alto
                 self.reset_speed_filter()
+                v = self.reset_robot_conf()
+                self.controller.robot_vel_publish(v)
+                #self.rate.sleep()
                 return
         elif self.robot_state == 2:
-            self.controller.robot_pos_publish(reset=True)
             self.reset_speed_filter()
+            v = self.reset_robot_conf()
+            self.controller.robot_vel_publish(v)
+            #self.rate.sleep()
             return
         else:
             self.scheduler_updateTarget(0)
@@ -588,132 +608,24 @@ class AI:
         v_av = self.avoider.choose_action(obs_av, True)
         collision, dmin = self.find_dMin()
         v = np.zeros(6)
-        
         for i in range(3):
             if dmin >= self.secure_d:
                 v[i] = self.red_fact*v_sea[i]
             elif dmin <= self.warning_d:
-                v[i] = self.red_fact*v_av[i]#*1.8
+                v[i] = self.red_fact*v_av[i]*1.8
             else:
                 v[i] = self.red_fact*(dmin*v_sea[i] + (self.secure_d-dmin)*v_av[i])/self.secure_d
-        """
-        for i in range(3):
-            v[i] = self.red_fact*v_sea[i]
-        """
+        v[3], v[4] = v4, v5
         if self.useFilter:
             v[0:3] = self.speed_filter(v[0:3])
-        
-        v[3], v[4] = v4, v5
         self.controller.robot_vel_publish(v)
+        #self.rate.sleep()
         
         return collision
         
-    
-    def moveBill(self, object_target=None):
-        if self.bill_state == 0 or self.bill_state == -1:
-            self.scheduler_updateTask(1)
-            if self.bill_state == 1:
-                self.scheduler_updateTarget(1)
-            else:
-                self.controller.billHandPos_publishFun([2,0,0,0])
-                #print('Bill is returning home:)')
-                return
-        elif self.bill_state == 2:
-            self.controller.billHandPos_publishFun([2,0,0,0])
-            #print('Bill is returning home:)')
-            return
-        else:
-            self.scheduler_updateTarget(1)
-            #print(self.target_bill)
-        if object_target is None:
-            object_target = self.target_bill
-        object_target = np.matmul(self.R_mat, object_target)
-        object_target = [ object_target[i]+self.tr_vect[i] for i in range(3) ]
-        bill_cmd = np.zeros(4)
-        for i in range(3):
-            bill_cmd[i+1] = object_target[i]
-        if self.target_bill[1]<0 :
-            bill_cmd[0] = 0
-        else:
-            bill_cmd[0] = 1
-        self.controller.billHandPos_publishFun(bill_cmd)
-        
-    def moveObject(self, object_str, pos, pickOrPlaceBool):
-        """
-        pickOrPlaceBool:
-            False = pick
-            True = place
-        """
-        if not pickOrPlaceBool:
-            pos[2] = -1.0
-        if  object_str == 'red':
-            self.controller.redCube_publish(pos)        
-        elif  object_str == 'green':
-            self.controller.greenCube_publish(pos)
-        elif  object_str == 'blue':
-            self.controller.blueCube_publish(pos)
-        elif  object_str == 'yellow':
-            self.controller.yellowCube_publish(pos)
-        elif  object_str == 'grey':
-            self.controller.greyCube_publish(pos)
-        elif  object_str == 'sphere':
-            self.controller.target_pos_publish(pos)
-        else:
-            print('Wrong cube passed in moveObject fun:(')
-        
         
     def resetEnv(self): 
-        yPosSampled = sample(self.yPos, 6)
-        
-        redCube_pos = [ sample(self.xPos, 1)[0], yPosSampled[0], self.zPos]
-        greenCube_pos = [ sample(self.xPos, 1)[0], yPosSampled[1], self.zPos]
-        blueCube_pos = [ sample(self.xPos, 1)[0], yPosSampled[2], self.zPos]
-        yellowCube_pos = [ sample(self.xPos, 1)[0], yPosSampled[3], self.zPos]
-        greyCube_pos = [ sample(self.xPos, 1)[0], yPosSampled[4], self.zPos]
-        sphere_pos = [ sample(self.xPos, 1)[0], yPosSampled[5], self.zPos]
-        
-        """
-        #due gruppi di oggetti ben definiti
-        redCube_pos = [0.3, 0.5, 0.07]
-        greenCube_pos = [0.6, 0.5, 0.07]
-        blueCube_pos = [0.12, 0.5, 0.07]
-        yellowCube_pos = [0.12, -0.3, 0.07]
-        greyCube_pos = [0.5, -0.3, 0.07]
-        sphere_pos = [0.7, -0.3, 0.07]
-        """
-        """
-        #Questa configurazione ha dato problemi nel calcolo degli indici una volta (dopo alcuni reset automatici), poi non più
-        redCube_pos = [0.25, -0.45, 0.07]
-        greenCube_pos = [0.4, -0.15, 0.07]
-        blueCube_pos = [0.7, 0.15, 0.07]
-        yellowCube_pos = [0.55, 0.3, 0.07]
-        greyCube_pos = [0.5, 0.0, 0.07]
-        sphere_pos = [0.7, -0.3, 0.07]
-        """
-        self.controller.redCube_publish(redCube_pos)
-        self.controller.greenCube_publish(greenCube_pos)
-        
-        self.controller.billHandPos_publishFun([2,0,0,0])
-        self.controller.robot_pos_publish(reset=True)
-         
-        self.controller.blueCube_publish(blueCube_pos)
-        self.controller.yellowCube_publish(yellowCube_pos)
-        
-        resetCompleted = False
-        reset_pos_robot = self.controller.start_pos_robot
-        r_pos = np.array(self.controller.robot_pos).copy()
-        c = 0
-        while(not resetCompleted):
-            r_pos = np.array(self.controller.robot_pos).copy()
-            resetCompleted = np.array(
-                [ r_pos[i]>=reset_pos_robot[i]-0.1 and r_pos[i]<=reset_pos_robot[i]+0.1 for i in range(6) ]
-                ).all()
-            c += 1
-            if(c == 500_000):
-                break;
         self.controller.robot_vel_publish(np.zeros(6))
-        self.controller.greyCube_publish(greyCube_pos)
-        self.controller.target_pos_publish(sphere_pos)
         self.scheduler.reset()       
         self.target_bill = np.zeros(3)
         self.target_robot = np.zeros(3)

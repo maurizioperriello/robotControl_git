@@ -12,6 +12,7 @@ from random import randint, uniform, choice
 import numpy as np
 from ddpg_classes import Agent
 import pandas as pd
+import math
 
 
 def debugInfo(n):
@@ -248,7 +249,7 @@ if __name__ == '__main__':
         changeInitialPosition = True
         
         cancel_rememberIteration = True #se True, consente di salvare sempre tutte le iterazioni, anche quando non avviene correttamente il reset
-        useMemory = False
+        avoidMemory = False
         
         reduction_factor = 0.5 #fattore di riduzione delle velocità del robot
                 
@@ -257,7 +258,7 @@ if __name__ == '__main__':
                                   #  EE_vx, EE_vy, EE_vz]  
         
         #start at 0.1
-        noise = 0.15
+        noise = 0.0
               
         agent = Agent(input_dims=observation_shape, n_actions=3, noise=noise,
                       chkpt_dir='tmp/ddpg_simplerSearcher_newEnv',
@@ -293,7 +294,7 @@ if __name__ == '__main__':
         success_history = []
         config_history = []
     
-        loadMemory = evaluate or useMemory
+        loadMemory = evaluate or avoidMemory
     
         #routine di caricamento dei pesi e della memoria
         #per poter caricare i dati è necessario prima inizializzare la rete,
@@ -327,7 +328,18 @@ if __name__ == '__main__':
         agent.memory.terminal_memory = np.zeros(1_000_000, dtype=np.bool)
         """
         
-        pick = True
+        pick = False
+        
+        target_x = 0.0
+        target_y = 0.0
+        target_z = 0.0
+        object_position = [0.0, 0.0, 0.0]
+        
+        max_x = 0.5 #0.5
+        max_y = 0.4
+        max_z = 0.4
+        
+        pick_conf = reset_pos_robot
         
         #routine di training/evalutation
         for ep in range(n_games):
@@ -339,7 +351,7 @@ if __name__ == '__main__':
             #Reset Routine
             controller.robot_vel_publish(start_vel_robot)
             #rate.sleep()
-            
+            print(pick)
             #controller.table_publish(resetTablePos)
             #rate.sleep()
             if pick:
@@ -352,20 +364,33 @@ if __name__ == '__main__':
             #se entro 500000 iterazioni il posizionamento non è stato completato
             #(e, quindi, il robot è quasi sicuramente bloccato), allora si continua
             #comunque
-            while(not resetCompleted or not pick):
-                r_pos = np.array(controller.robot_pos).copy() #robot position
-                resetCompleted = np.array(
-                    [ r_pos[i]>=reset_pos_robot[i]-0.1 and r_pos[i]<=reset_pos_robot[i]+0.1 for i in range(6) ]
-                    ).all()
-                c += 1
-                if(c == 500_000):
-                    break;
-            if(resetCompleted or not pick):
-                remember_iteration = True
+            
+            if pick:
+                while(not resetCompleted):
+                    r_pos = np.array(controller.robot_pos).copy() #robot position
+                    resetCompleted = np.array(
+                        [ r_pos[i]>=reset_pos_robot[i]-0.1 and r_pos[i]<=reset_pos_robot[i]+0.1 for i in range(6) ]
+                        ).all()
+                    c += 1
+                    if(c == 500_000):
+                        break;
+                if(resetCompleted):
+                    remember_iteration = True
+                else:
+                    remember_iteration = False
             else:
-                remember_iteration = False
-            #controller.table_publish(startTablePos)
-            #rate.sleep()
+                while(not resetCompleted):
+                    r_pos = np.array(controller.robot_pos).copy() #robot position
+                    resetCompleted = np.array(
+                        [ r_pos[i]>=pick_conf[i]-0.1 and r_pos[i]<=pick_conf[i]+0.1 for i in range(6) ]
+                        ).all()
+                    c += 1
+                    if(c == 500_000):
+                        break;
+                if(resetCompleted):
+                    remember_iteration = True
+                else:
+                    remember_iteration = False
             
             """
             if ep >= 30_000:
@@ -373,7 +398,7 @@ if __name__ == '__main__':
             """   
             change = choice([0,1])
             
-            if changeInitialPosition and change and not pick:
+            if changeInitialPosition and change and pick:
                 startConfig = startPosition[choice(range(len(startPosition)))]
                 controller.robot_pos_publish(startConfig, False)
                 setConfigCompleted = False
@@ -394,14 +419,26 @@ if __name__ == '__main__':
             #target_z = 0.41
             """
             
-            #New Env (senza tavolo)
-            target_x = round(uniform(0.0, 0.65), 2)
-            target_y = round(uniform(-0.5, 0.5), 2)
-            target_z = round(uniform(0.0, 0.45), 2)
-            object_position = [target_x, target_y, target_z]
+            sign = lambda x: math.copysign(1, x)
             
+            print(f'OLD = {object_position}')
+            #New Env (senza tavolo)
+            if pick:
+                target_x = round(uniform(0.0, 0.50), 2) #round(uniform(0.0, 0.50), 2)
+                target_y = round(uniform(-0.4, 0.4), 2) #round(uniform(-0.4, 0.4), 2)
+                target_z = 0.07
+            else:
+                target_x = target_x + round(uniform(0.20, 0.45), 2) #round(uniform(0.20, 0.45), 2)
+                target_y = target_y + round(uniform(0.0, 0.2), 2)*sign(target_y) #(0.0, 0.2)
+                target_z = target_z + round(uniform(0.08, 0.35), 2)
+            object_position = [ target_x if target_x<max_x else max_x,
+                                target_y if abs(target_y)<max_y else max_y*sign(target_y),
+                                target_z if target_z<max_z else max_z ]
+            print(f'NEW = {object_position}')
             controller.target_pos_publish(object_position)
-            #rate.sleep()
+            rate.sleep()
+            rate.sleep()
+            rate.sleep()
             
             observation = observe(controller) #osservazione dello stato presente
             
@@ -459,8 +496,10 @@ if __name__ == '__main__':
                 
                 print(count)
                 if(count == limit_count):
+                    controller.robot_vel_publish(start_vel_robot)
                     break;
             
+            controller.robot_vel_publish(start_vel_robot)
             if remember_iteration:    
                 score_history.append(score)
                 success_history.append(int(done))
@@ -484,7 +523,12 @@ if __name__ == '__main__':
                 if append_data:
                     score_history = []
             print('Episode ', ep, 'score %.1f' % score, 'avg score %.1f' % avg_score,
-              '---------------')                
+              '---------------')
+            if pick:
+                if done:
+                    pick_conf = controller.robot_pos
+                else:
+                    pick_conf = reset_pos_robot
         
         score_df = pd.DataFrame(list(zip(success_history, score_history)),
                                      columns=['success', 'score'])

@@ -6,6 +6,9 @@ FILE:
 
 
 CHANGELOG:
+6.0:
+	-Miglioramenti vari; aggiunta vari files per robot vero
+
 5.2:
 	-Miglioramenti vari; prima versione della classe controller per il robot vero
 

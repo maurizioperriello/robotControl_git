@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Created on Wed Apr 20 11:54:39 2022
+Created on Thu May 19 17:02:49 2022
 
 @author: mauri
 """
 
 import rospy
 from time import sleep
-from AI_classes import AI
+from AI_real_class import AI
 
 if __name__ == '__main__':
     try:
@@ -19,9 +19,9 @@ if __name__ == '__main__':
                     'completed' : list_boolCubeIsInFinalPos}
         """
         project = { 'cube' : ['red', 'green', 'blue', 'yellow', 'grey', 'sphere'],
-                    'position' : [ [0.4,-0.3,0.05], [0.4,-0.3,0.135],
-                                   [0.4,-0.1,0.05], [0.4,-0.1,0.135],
-                                   [0.4,-0.2,0.195], [0.4,-0.2,0.256] ],
+                    'position' : [ [0.5,-0.3,0.05], [0.5,-0.3,0.135],
+                                   [0.5,-0.1,0.05], [0.5,-0.1,0.135],
+                                   [0.5,-0.2,0.195], [0.5,-0.2,0.256] ],
                     'priorities' : [ [], ['red'], [], ['blue'],
                                      ['red', 'green', 'blue', 'yellow'],
                                      ['red', 'green', 'blue', 'yellow', 'grey'] ],
@@ -29,7 +29,7 @@ if __name__ == '__main__':
         
         agent = AI(project=project)
         
-        episode_n = 100
+        episode_n = 1
         
         for ep in range(episode_n):  
             if(rospy.is_shutdown()):
@@ -54,12 +54,9 @@ if __name__ == '__main__':
                 
                 bill_state = agent.getBillState()
                 robot_state = agent.getRobotState()
-                
-                #print(f'bill : {bill_state}', f'ur10e : {robot_state}')
-                #-0.5   0.15 -0.93
-                if count % 300 == 0:
-                    agent.moveBill()
+
                 collision = agent.doAction()
+                #agent.rate_sleep()
                 
                 #Check target
                 agent.checkAllTarget()
@@ -67,7 +64,7 @@ if __name__ == '__main__':
                 if collision:
                     print('Collision:(')
                     collision_counter += 1
-                #print(f'EE_vel = {agent.controller.EE_vel}')
+                
                 done = agent.isProjectCompleted()
                 count += 1
             
