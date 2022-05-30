@@ -13,6 +13,7 @@ import numpy as np
 from ddpg_classes import Agent
 import pandas as pd
 import math
+from utils import HTrans, compute_ur_jacobian
 
 
 def debugInfo(n):
@@ -38,11 +39,48 @@ def save_config(config_history, file, append):
         with open(file, "w") as file:
             np.savetxt(file, config_history)
 
-def observe(ctrl):
+def observe(ctrl, action):
     EE_pos, EEvel = ctrl.EE_pos.copy(), ctrl.EE_vel.copy()
     #theta_joints = np.array(ctrl.robot_pos).copy()
     target_pos = np.array(ctrl.target_pos).copy()
     obs = []
+    
+    """
+    R_mat_ur10e = np.array([[0, -1, 0],
+                            [1, 0, 0],
+                            [0, 0, 1]])
+    t_vect_EE = [-0.6, 0.0, 0.0]
+    #print(f'or = {ctrl.EE_orientation}')
+    th = np.array(ctrl.robot_pos).copy()
+    th_mat = np.matrix([ [th[i]] for i in range(6) ])
+    T_EE = HTrans(th_mat, 0)
+    EE_pos1 = np.matmul(R_mat_ur10e, 
+                           [ T_EE[i,3] for i in range(3) ])
+    #EE_pos1 = np.matmul(R_mat2, EE_pos1)
+    EE_pos1 = [ EE_pos1[i]+t_vect_EE[i] for i in range(3) ]
+    T_d = np.matrix(np.identity(4), copy=False)
+    T_d[2,3] = 0.195
+    T_tcp = T_EE * T_d
+    TCP_pos = np.matmul(R_mat_ur10e,
+                        [ T_tcp[i,3] for i in range(3) ])
+    TCP_pos = [ TCP_pos[i]+t_vect_EE[i] for i in range(3) ]
+    print(f'EE_pos_sim = {EE_pos}',
+      f'EE_pos_T = {EE_pos1}',
+      f'TCP_pos = {TCP_pos}', sep='\n')
+    """
+    """
+    print(f'vel_sim = {EEvel}')
+    J = compute_ur_jacobian(th)
+    EEvel = np.dot(J, action)[0:3]
+    EEvel = np.matmul(R_mat_ur10e, EEvel)
+    print(f'vel_J = {EEvel}')
+    """
+    
+    T_d = np.matrix(np.identity(4), copy=False)
+    T_d[2,3] = -0.195
+    EE_pos.append(1.0)
+    EE_pos = np.dot(T_d, EE_pos)
+    EE_pos = [ EE_pos[0,i] for i in range(3) ]
 
     for j in range(3):
         obs.append(target_pos[j])
@@ -74,8 +112,13 @@ def give_reward(d_history, ctrl, v, old_v):
     
     objPos = np.array(ctrl.target_pos).copy()
     EEpos = ctrl.EE_pos.copy()
+    T_d = np.matrix(np.identity(4), copy=False)
+    T_d[2,3] = -0.195
+    EEpos.append(1.0)
+    EEpos = np.dot(T_d, EEpos)
+    EEpos = [ EEpos[0,i] for i in range(3) ]
     robot_acc = np.array(ctrl.robot_acc).copy()
-    acc_r = 5*np.linalg.norm(robot_acc[0:3]) #dopo 80k ep si passa da 0.5 a 4
+    acc_r = 3*np.linalg.norm(robot_acc[0:3]) #dopo 80k ep si passa da 0.5 a 4
     
     d = 0
     for i in range(np.size(objPos)):
@@ -87,11 +130,11 @@ def give_reward(d_history, ctrl, v, old_v):
     c = [ 1.5 if dv[i]>max_dv else 0 for i in range(3) ]
     r = sum( [ x*y for (x, y) in zip(c, dv) ] )
     """
-    r2 = 15*np.linalg.norm(v) #dopo 80k ep si passa da 2 a 10
+    r2 = 10*np.linalg.norm(v) #dopo 80k ep si passa da 2 a 10
     
     table_r = 100 if EEpos[2] < 0.05 else 0 #reward per evitare che l'EE tocchi il tavolo
     
-    a = 20
+    a = 22
     reward = - a*d - r2 - acc_r - table_r
     #print(f'acc_r = {acc_r} \n r = {a*d} \n v_r = {r2}')
     d_history.append(d)
@@ -135,14 +178,30 @@ def check_target_OLD(ctrl):
         check = check and check_bools[i]
     return check
 
-def check_target(ctrl):
+def check_target(ctrl, count):
     #funzione per controllare se il risultato è stato raggiunto o meno:
     #per farlo, bisogna arrivare in prossimità del target (sfera bianca) con
     #una velocità inferiore o ugule a 0.1 m/s
     delta = 0.02 
-    d_goal = 0.15
+    d_goal = 0.1
+    
+    if count>=10000 and count<=19999:
+        d_goal = 0.08
+    elif count>=20000 and count<=28000:
+        d_goal = 0.06
+    elif count>=28001 and count<=34000:
+        d_goal = 0.04
+    elif count>=34001:
+        d_goal = 0.02
     
     EEpos = ctrl.EE_pos.copy() #se possibile, si effettua sempre la copia dei valori della classe controller
+    T_d = np.matrix(np.identity(4), copy=False)
+    T_d[2,3] = -0.195
+    #print(f'EE_pos = {EEpos}')
+    EEpos.append(1.0)
+    EEpos = np.dot(T_d, EEpos)
+    EEpos = [ EEpos[0,i] for i in range(3) ]
+    #print(f'tcp_pos = {EEpos}')
     objPos = np.array(ctrl.target_pos).copy()
     finalLinks = ctrl.finalLinks_spatialPos.copy()
     joints_spatialPos = ctrl.joints_spatialPos
@@ -249,7 +308,7 @@ if __name__ == '__main__':
         changeInitialPosition = True
         
         cancel_rememberIteration = True #se True, consente di salvare sempre tutte le iterazioni, anche quando non avviene correttamente il reset
-        avoidMemory = False
+        avoidMemory = True
         
         reduction_factor = 0.5 #fattore di riduzione delle velocità del robot
                 
@@ -287,7 +346,7 @@ if __name__ == '__main__':
             w += 1
         
         best_score = 0
-        n_games = 35_000
+        n_games = 42_000
         n_games += 1 #per far si che al penultimo game si salvi la memoria (viene salvata ogn 100 episode, per non rallentare troppo il processo)
         limit_count = 1500 #numero di iterazioni massime per episode
         score_history = []
@@ -304,13 +363,13 @@ if __name__ == '__main__':
         if load_checkpoint:
             n_steps = 0
             while n_steps <= agent.batch_size:
-                observation = observe(controller)
+                observation = observe(controller, np.zeros(6))
                 action = [ randint(1, 10)/10 for _ in range(3) ]
                 #controller.robot_vel_publish(action)
                 #rate.sleep()
-                observation_ = observe(controller)
+                observation_ = observe(controller, np.zeros(6))
                 reward, _ = give_reward([], controller, action, np.zeros(3))
-                done = check_target(controller)
+                done = False
                 agent.remember(observation, action, reward, observation_, done)
                 n_steps += 1
             agent.learn()
@@ -335,9 +394,9 @@ if __name__ == '__main__':
         target_z = 0.0
         object_position = [0.0, 0.0, 0.0]
         
-        max_x = 0.5 #0.5
+        max_x = 0.4 #0.5
         max_y = 0.4
-        max_z = 0.4
+        max_z = 0.35
         
         pick_conf = reset_pos_robot
         
@@ -424,13 +483,13 @@ if __name__ == '__main__':
             print(f'OLD = {object_position}')
             #New Env (senza tavolo)
             if pick:
-                target_x = round(uniform(0.0, 0.50), 2) #round(uniform(0.0, 0.50), 2)
+                target_x = round(uniform(0.0, 0.40), 2) #round(uniform(0.0, 0.50), 2)
                 target_y = round(uniform(-0.4, 0.4), 2) #round(uniform(-0.4, 0.4), 2)
                 target_z = 0.07
             else:
-                target_x = target_x + round(uniform(0.20, 0.45), 2) #round(uniform(0.20, 0.45), 2)
+                target_x = target_x + round(uniform(0.20, 0.35), 2) #round(uniform(0.20, 0.45), 2)
                 target_y = target_y + round(uniform(0.0, 0.2), 2)*sign(target_y) #(0.0, 0.2)
-                target_z = target_z + round(uniform(0.08, 0.35), 2)
+                target_z = target_z + round(uniform(0.08, 0.30), 2)
             object_position = [ target_x if target_x<max_x else max_x,
                                 target_y if abs(target_y)<max_y else max_y*sign(target_y),
                                 target_z if target_z<max_z else max_z ]
@@ -440,7 +499,7 @@ if __name__ == '__main__':
             rate.sleep()
             rate.sleep()
             
-            observation = observe(controller) #osservazione dello stato presente
+            observation = observe(controller, np.zeros(6)) #osservazione dello stato presente
             
             #reset variabili
             d_history = [] #storico delle distanze EE-target ad ogni iterazione
@@ -470,10 +529,10 @@ if __name__ == '__main__':
                 controller.robot_vel_publish(v) #invio dell'azione a CoppeliaSim
                 #rate.sleep()
                 
-                observation_ = observe(controller) #osservazione dello stato futuro, conseguente all'azione
+                observation_ = observe(controller, v) #osservazione dello stato futuro, conseguente all'azione
                 reward, d_history = give_reward(d_history, controller,
                                                 action, old_action) #calcolo del reward
-                done = check_target(controller) #valutazione se il target è stato raggiunto o meno
+                done = check_target(controller, ep) #valutazione se il target è stato raggiunto o meno
                 
                 score += reward #aggiornamento dello score dell'episode
              

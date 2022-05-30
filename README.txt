@@ -6,6 +6,9 @@ FILE:
 
 
 CHANGELOG:
+6.2:
+	-Miglioramenti dei vari scripts per il robot reale
+
 6.1:
 	-Aggiunta dei pesi migliori per Searcher e Avoider per la gestione della scena finale e dell'ur10e reale
 
