@@ -251,6 +251,7 @@ class Scheduler:
         bill_task = { 'cube' : [ self.project['cube'][i] for i in index_bill_task ],
                       'position' : [ [cubes_pos[i], self.project['position'][i]] for i in index_bill_task ],
                       'completed' : [ [False, False] for _ in range(2) ] }
+                      #'completed' : [ [True, True] for _ in range(2) ] }
         robot_task = { 'cube' : [ self.project['cube'][i] for i in index_robot_task ],
                        'position' : [ [cubes_pos[i], self.project['position'][i]] for i in index_robot_task ],
                        'completed' : [ [False, False] for _ in range(2) ] }
@@ -309,13 +310,17 @@ class AI:
         
         self.secure_d = 0.50
         self.warning_d = 0.25
-        self.red_fact = 0.1 #fattore di riduzione delle velocità effettive applicate
+        self.red_fact = 0.2 #fattore di riduzione delle velocità effettive applicate
         self.dt = 0.05
         
         self.reduction_factor = 0.5 #fattore di riduzione da passare ai costruttori degli agenti
         
+        self.useEE = True #se True, si trasla il TCP per ottenere la posizione dell'EE e controllare quello
+        
+        self.d_goal = 0.02 #TODO: IL TARGET VIENE RAGGIUNTO ANCHE DA SOTTO ORA!!!
+        
         #Velocity Filter Parameters
-        self.useFilter = False
+        self.useFilter = True
         self.action_cntr = 0
         self.filteredAction = 6
         self.speedVect_size = 20
@@ -367,15 +372,16 @@ class AI:
     
     def observe_searcher(self, action, target_pos=None):
         EE_pos = self.controller.tf_translation.copy()
-        """
-        #Per passare dalla posizione del TCP a quella dell'EE,
-        #come in simulazione
-        T_d = np.matrix(np.identity(4), copy=False)
-        T_d[2,3] = 0.195
-        EE_pos.append(1.0)
-        EE_pos = np.dot(T_d, EE_pos)
-        EE_pos = [ EE_pos[0,i] for i in range(3) ]
-        """
+        
+        if self.useEE:
+            #Per passare dalla posizione del TCP a quella dell'EE,
+            #come in simulazione
+            T_d = np.matrix(np.identity(4), copy=False)
+            T_d[2,3] = 0.195
+            EE_pos.append(1.0)
+            EE_pos = np.dot(T_d, EE_pos)
+            EE_pos = [ EE_pos[0,i] for i in range(3) ]
+        
         th = self.controller.robot_th.copy()
         th[0] = th[0] - self.th90rad
         J = compute_ur_jacobian(th)
@@ -409,15 +415,16 @@ class AI:
             for i in range(3):
                 theta_target[i] = theta_joints[i] + v_searcher[i]*self.dt#*2
         EE_pos = self.controller.tf_translation.copy()
-        """
-        #Per passare dalla posizione del TCP a quella dell'EE,
-        #come in simulazione
-        T_d = np.matrix(np.identity(4), copy=False)
-        T_d[2,3] = 0.195
-        EE_pos.append(1.0)
-        EE_pos = np.dot(T_d, EE_pos)
-        EE_pos = [ EE_pos[0,i] for i in range(3) ]
-        """
+        
+        if self.useEE:
+            #Per passare dalla posizione del TCP a quella dell'EE,
+            #come in simulazione
+            T_d = np.matrix(np.identity(4), copy=False)
+            T_d[2,3] = 0.195
+            EE_pos.append(1.0)
+            EE_pos = np.dot(T_d, EE_pos)
+            EE_pos = [ EE_pos[0,i] for i in range(3) ]
+        
         th = self.controller.robot_th.copy()
         th[0] = th[0] - self.th90rad
         J = compute_ur_jacobian(th)
@@ -453,21 +460,30 @@ class AI:
     
     def checkRobotTarget(self):        
         delta = 0.1 
-        d_goal = 0.15
+        d_goal = self.d_goal
         
         alpha, beta = self.controller.EE_orientation.copy()[0], \
                         self.controller.EE_orientation.copy()[1]
         alpha_target, beta_target = -1.56, 0.0
         
-        EEpos = self.controller.tf_translation.copy() #se possibile, si effettua sempre la copia dei valori della classe controller
+        EE_pos = list(self.controller.tf_translation.copy()) #se possibile, si effettua sempre la copia dei valori della classe controller
+        if self.useEE:
+            #Per passare dalla posizione del TCP a quella dell'EE,
+            #come in simulazione
+            T_d = np.matrix(np.identity(4), copy=False)
+            T_d[2,3] = 0.195
+            EE_pos.append(1.0)
+            EE_pos = np.dot(T_d, EE_pos)
+            EE_pos = [ EE_pos[0,i] for i in range(3) ]
+        
         objPos = np.array(self.target_robot).copy()
         
         d = 0
         for i in range(np.size(objPos)):
-            d = d + (objPos[i] - EEpos[i])**2
+            d = d + (objPos[i] - EE_pos[i])**2
         d = np.sqrt(d)
-    
-        check_bools_pos = d <= d_goal and EEpos[2] >= objPos[2]
+
+        check_bools_pos = d <= d_goal #and EE_pos[2] >= objPos[2]
         check_angles = [ alpha-alpha_target<=delta and alpha-alpha_target>=-delta,
                          beta-beta_target<=delta and beta-beta_target>=-delta]
     
@@ -495,7 +511,7 @@ class AI:
     def checkBillTarget(self):
         RX_hand = np.array(self.controller.opRightHand_pos).copy()
         LX_hand = np.array(self.controller.opLeftHand_pos).copy()
-        d_min = 0.25
+        d_min = 0.45
         rx_d = np.linalg.norm([ RX_hand[i]-self.target_bill[i] for i in range(3) ])
         lx_d = np.linalg.norm([ LX_hand[i]-self.target_bill[i] for i in range(3) ])
         taskCompleted = (rx_d <= d_min) or (lx_d <= d_min)
@@ -557,14 +573,21 @@ class AI:
         point_op = [ np.array(self.controller.opHead_pos).copy(), 
                      np.array(self.controller.opRightHand_pos).copy(),
                      np.array(self.controller.opLeftHand_pos).copy() ]
-        EE_pos = self.controller.EE_pos.copy()
-    
+        #EE_pos = self.controller.EE_pos.copy()
+        EE_pos = self.controller.tf_translation.copy()
+        T_d = np.matrix(np.identity(4), copy=False)
+        T_d[2,3] = 0.195
+        EE_pos.append(1.0)
+        EE_pos = np.dot(T_d, EE_pos)
+        EE_pos = [ EE_pos[0,i] for i in range(3) ]
+        
         coll_d = 0.15 #minima distanza (di sicurezza) entro la quale si considera una collisione
         points = []
         points.append(EE_pos)
+        
         for i in range(4, 0, -1):
             points.append(spatialPos_joints_robot[i])
-    
+        
         d_min = 100 #distanza minima tra le varie distanze calcolate
 
         check_d = []
@@ -579,6 +602,7 @@ class AI:
         collisionBool = np.array(check_d).any()
         if collisionBool:
             print('Collision:(')
+        
         return collisionBool, d_min
 
 
@@ -593,8 +617,8 @@ class AI:
     
     
     def findV456(self):
-        k = 500
-        max_v = 0.2
+        k = 1500
+        max_v = 2.0
         orientation_quat_des = self.controller.desired_quat
         
         th90rad = -90*2*pi/360
@@ -682,7 +706,7 @@ class AI:
                 v[i] = self.red_fact*v_av[i]
             else:
                 v[i] = self.red_fact*(dmin*v_sea[i] + (self.secure_d-dmin)*v_av[i])/self.secure_d
-        v[3], v[4], v[5] = v4, v5, v6
+        v[3], v[4], v[5] = self.findV456() #v4, v5, v6
         """
         if self.useFilter:
             v[0:3] = self.speed_filter(v[0:3])

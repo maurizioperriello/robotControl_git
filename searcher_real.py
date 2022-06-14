@@ -89,7 +89,7 @@ def observe(ctrl, action):
 
 def check_target(ctrl, pick, target):
     delta = 5.0 
-    d_goal = 0.15
+    d_goal = 0.025
     
     
     alpha, beta = ctrl.tf_orientation.copy()[0]*360/(2*pi), \
@@ -126,13 +126,13 @@ def check_target(ctrl, pick, target):
     check_bools = np.append(check_bools_pos, check_angles)
 
     print(d)
-
+    #print(objPos)
 
     return np.array(check_bools_pos).all()
 
   
 def findV456(ctrl):
-    k = 600
+    k = 500
     max_v = 0.2
     orientation_quat_des = ctrl.desired_quat
     
@@ -192,10 +192,10 @@ def computeSpatialPosJoints(ctrl):
 
 
 
-#Filter
+#Filter AI
 action_cntr = 0
-speedVect_size = 15
-n_filteredAction = 5
+speedVect_size = 20
+n_filteredAction = 3
 speed_vect = [ [ 0.0 for _ in range(speedVect_size) ] 
                            for c in range(n_filteredAction) ]
 
@@ -214,6 +214,28 @@ def reset_speed_filter():
     action_cntr = 0
     speed_vect = [ [ 0.0 for _ in range(speedVect_size) ] 
                            for c in range(n_filteredAction) ]
+    
+#Filter wrist
+action_cntr_wrist = 0
+speedVect_size_wrist = 1
+speed_vect_wrist = [ [ 0.0 for _ in range(speedVect_size_wrist) ] 
+                           for c in range(3) ]
+
+def speed_filter_wrist(action):
+    global action_cntr_wrist
+    global speed_vect_wrist
+    index = action_cntr_wrist % speedVect_size_wrist
+    for i in range(3):
+        speed_vect_wrist[i][index] = action[i]
+    action_cntr_wrist += 1
+    return [ np.mean(speed_vect_wrist[i]) for i in range(3) ]
+    
+def reset_speed_filter_wrist():
+    global action_cntr_wrist
+    global speed_vect_wrist
+    action_cntr_wrist = 0
+    speed_vect_wrist = [ [ 0.0 for _ in range(speedVect_size) ] 
+                           for c in range(3) ]
 
 
 
@@ -240,10 +262,10 @@ if __name__ == '__main__':
         
         useFilter = True
         
-        useGripper = False
+        useGripper = True
         
-        reduction_factor = 0.5 #fattore di riduzione delle velocità del robot
-        other_red_factor = 0.1 #ulteriore fattore di riduzione         
+        reduction_factor = 0.2 #fattore di riduzione delle velocità del robot
+        other_red_factor = 0.5 #ulteriore fattore di riduzione         
                              
         observation_shape = (12,)  # [target_x-EEx, target_y-EEy, target_z-EEz,
                                   #  EE_vx, EE_vy, EE_vz]  
@@ -301,8 +323,8 @@ if __name__ == '__main__':
             
             #controllerSim.target_pos_publish(controller.target_pos)
             #observation = observe(controllerSim, np.zeros(6))
-            
-            place_target = [0.0, -0.25, 0.20]
+
+            place_target = [0.22, -0.014, 0.22]
             
             observation = observe(controller, np.zeros(6))
             
@@ -324,7 +346,8 @@ if __name__ == '__main__':
                 v[3], v[4], v[5] = findV456(controller)
                 
                 if useFilter:
-                    v[0:5] = speed_filter(v[0:5])
+                    v[0:3] = speed_filter(v[0:3])
+                    v[3:6] = speed_filter_wrist(v[3:6])
 
                 if done or finish:
                     v = np.zeros(6)
@@ -336,7 +359,7 @@ if __name__ == '__main__':
                 #controllerSim.robot_vel_publish(v)
                 rate.sleep()   
                 #print(v)
-                
+                print(f'1 = {controller.redCube_pos}', f'3 = {controller.greenCube_pos}', sep='\n')
                 if done and not finish:
                     if useGripper:
                         controller.commandGripper(pick, not pick)

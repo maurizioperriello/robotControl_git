@@ -51,7 +51,12 @@ spatialPosFinalLinks_subs = 'spatialPos_finalLinks'
 """
 
 
-class Controller:    
+class Controller:
+    """
+    opHead_pos = np.zeros(3)
+    opRightHand_pos = np.zeros(3)        
+    opLeftHand_pos = np.zeros(3)
+    """
     def __init__(self,nodeName='robotControl',
                  robotVel_pubTopic='joint_group_vel_controller/command',
                  robot_subs='joint_states',
@@ -59,11 +64,11 @@ class Controller:
                  operator_head_subs='/vrpn_client_node/abdomen/pose',
                  operator_rightHand_subs='/vrpn_client_node/right_wrist_good/pose',
                  operator_leftHand_subs='vrpn_client_node/left_wrist/pose',
-                 targetPos_subs='/vrpn_client_node/Box/pose',
-                 redCube_subs='/vrpn_client_node/left_shoulder/pose',
+                 targetPos_subs='/vrpn_client_node/blueCube/pose', #/vrpn_client_node/Box/pose
+                 redCube_subs='/vrpn_client_node/left_shoulder/pose', #/vrpn_client_node/redCube222/pose
                  greenCube_subs='/vrpn_client_node/greenCube/pose',
                  blueCube_subs='/vrpn_client_node/blueCube/pose',
-                 yellowCube_subs='/vrpn_client_node/yellowCube/pose',
+                 yellowCube_subs='/vrpn_client_node/Box/pose',
                  greyCube_subs='/vrpn_client_node/Box/pose'):
         
         rospy.init_node(nodeName, anonymous=True) #inizializzazione del nodo
@@ -99,8 +104,9 @@ class Controller:
         self.R_mat_ur10e = np.array([[0, -1, 0],
                                      [1, 0, 0],
                                      [0, 0, 1]])
-        
-        self.dz = -0.08# -0.195 #distanza di sicurezza dall'oggetto lungo l'asse z
+        self.dx = -0.0
+        self.dy = -0.02
+        self.dz = 0.06 + 0.195 #distanza di sicurezza dall'oggetto lungo l'asse z
         
         #Publishers
         self.pub_robotControl_vel = rospy.Publisher(robotVel_pubTopic,
@@ -144,11 +150,17 @@ class Controller:
         #Rispetto al riferimento della simulazione
         #self.desired_quat = [-7.06214277e-01, -7.07996586e-01, 1.45309377e-03, -3.44868640e-04]
         #Rispetto al sistema di riferimento della base dell'ur10e
+        
         self.desired_quat = [0.001260282732801963,
                              -0.9999980906339583,
                              0.0012713514095039273,
                              0.0007836335014675667]
-        
+        """
+        self.desired_quat = [ 0.01433461,
+                              0.99983166,
+                              -0.0097998,
+                              0.00592785]
+        """
         self.sub_operatorHead_pos = rospy.Subscriber(operator_head_subs,
                                                      PoseStamped,
                                                      self.opHead_callback)
@@ -180,9 +192,15 @@ class Controller:
         
         #Subscriber Data
         
+        
         self.opHead_pos = np.zeros(3)
         self.opRightHand_pos = np.zeros(3)        
         self.opLeftHand_pos = np.zeros(3)
+        """
+        self.opHead_pos = opHead_pos
+        self.opRightHand_pos = opRightHand_pos        
+        self.opLeftHand_pos = opLeftHand_pos
+        """
         self.opHead_vel = np.zeros(3)
         self.opRightHand_vel = np.zeros(3)        
         self.opLeftHand_vel = np.zeros(3)
@@ -240,7 +258,7 @@ class Controller:
         response = self.gripper_service(cmd, vel)
         if not response.success:
             print('Something goes wrong with gripper:(')
-        rospy.sleep(5)
+        rospy.sleep(4)
         
     
     #Subscriber callback functions
@@ -320,7 +338,7 @@ class Controller:
         self.old_time_head = time
         check = False
         old_spatialPos = np.zeros(3)
-        if(np.array([ self.opLeftHand_pos[i]!=0.0 for i in range(3) ]).any()):
+        if(np.array([ self.opHead_pos[i]!=0.0 for i in range(3) ]).any()):
             check = True
             old_spatialPos = self.opHead_pos
         data = np.matmul(self.R_mat_optitrack, data)
@@ -337,7 +355,7 @@ class Controller:
         self.old_time_rxH = time
         check = False
         old_spatialPos = np.zeros(3)
-        if(np.array([ self.opLeftHand_pos[i]!=0.0 for i in range(3) ]).any()):
+        if(np.array([ self.opRightHand_pos[i]!=0.0 for i in range(3) ]).any()):
             check = True
             old_spatialPos = self.opRightHand_pos
         data = np.matmul(self.R_mat_optitrack, data)
@@ -367,48 +385,48 @@ class Controller:
     
     
     def target_pos_callback(self, msg):
-        data = [msg.pose.position.x,
-                msg.pose.position.y, 
+        data = [msg.pose.position.x + self.dx,
+                msg.pose.position.y + self.dy, 
                 msg.pose.position.z + self.dz]
         data = np.matmul(self.R_mat_optitrack, data)
         self.target_pos = [ data[i]+self.t_vect_optitrack[i] 
                            for i in range(3) ]
         
     def redCubePos_callback(self, msg):
-        data = [msg.pose.position.x,
-                msg.pose.position.y, 
+        data = [msg.pose.position.x + self.dx,
+                msg.pose.position.y + self.dy, 
                 msg.pose.position.z + self.dz]
         data = np.matmul(self.R_mat_optitrack, data)
         self.redCube_pos = [ data[i]+self.t_vect_optitrack[i] 
                             for i in range(3) ]
         
     def greenCubePos_callback(self, msg):
-        data = [msg.pose.position.x,
-                msg.pose.position.y, 
+        data = [msg.pose.position.x + self.dx,
+                msg.pose.position.y + self.dy, 
                 msg.pose.position.z + self.dz]
         data = np.matmul(self.R_mat_optitrack, data)
         self.greenCube_pos = [ data[i]+self.t_vect_optitrack[i] 
                                   for i in range(3) ]
         
     def blueCubePos_callback(self, msg):
-        data = [msg.pose.position.x,
-                msg.pose.position.y, 
+        data = [msg.pose.position.x + self.dx,
+                msg.pose.position.y + self.dy, 
                 msg.pose.position.z + self.dz]
         data = np.matmul(self.R_mat_optitrack, data)
         self.blueCube_pos = [ data[i]+self.t_vect_optitrack[i] 
                                  for i in range(3) ]
         
     def yellowCubePos_callback(self, msg):
-        data = [msg.pose.position.x,
-                msg.pose.position.y, 
+        data = [msg.pose.position.x + self.dx,
+                msg.pose.position.y + self.dy, 
                 msg.pose.position.z + self.dz]
         data = np.matmul(self.R_mat_optitrack, data)
         self.yellowCube_pos = [ data[i]+self.t_vect_optitrack[i] 
                                    for i in range(3) ]
         
     def greyCubePos_callback(self, msg):
-        data = [msg.pose.position.x,
-                msg.pose.position.y, 
+        data = [msg.pose.position.x + self.dx,
+                msg.pose.position.y + self.dy, 
                 msg.pose.position.z + self.dz]
         data = np.matmul(self.R_mat_optitrack, data)
         self.greyCube_pos = [ data[i]+self.t_vect_optitrack[i] 

@@ -18,7 +18,7 @@ Created on Wed Dec 22 11:44:51 2021
 import rospy
 from std_msgs.msg import Float64MultiArray, Int8MultiArray, Bool, Float64
 from sensor_msgs.msg import JointState
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Pose
 import numpy as np
 
 """
@@ -65,7 +65,8 @@ class Controller:
                  blueCube_pubTopic='blueCube_posDef', yellowCube_pubTopic='yellowCube_posDef',
                  greyCube_pubTopic='greyCube_posDef', redCube_subs='redCube_target_pos',
                  greenCube_subs='greenCube_target_pos', blueCube_subs='blueCube_target_pos',
-                 yellowCube_subs='yellowCube_target_pos', greyCube_subs='greyCube_target_pos'):
+                 yellowCube_subs='yellowCube_target_pos', greyCube_subs='greyCube_target_pos',
+                 ee_pose_subs='end_effector_pose'):
         
         rospy.init_node(nodeName, anonymous=True) #inizializzazione del nodo
         
@@ -172,12 +173,17 @@ class Controller:
                                                  JointState,
                                                  self.greyCubePos_callback)
         
+        self.sub_ee_orientation = rospy.Subscriber(ee_pose_subs,
+                                                   Pose,
+                                                   self.eePose_callback)
+        
         #Subscriber Data
         self.operator_pos = np.zeros(3)
         self.operator_vel = np.zeros(3)
     
         self.EE_pos = np.zeros(3)
         self.EE_vel = np.zeros(3)
+        self.EE_orientation = np.zeros(4)
         
         self.target_pos = np.zeros(3)
         
@@ -317,6 +323,10 @@ class Controller:
     
         
     #Subscriber callback functions
+    def eePose_callback(self, msg):
+        self.EE_orientation = [msg.orientation.x, msg.orientation.y,
+                               msg.orientation.z, msg.orientation.w]
+    
     def operator_pos_vel_callback(self, msg):
         self.operator_pos = msg.position
         self.operator_vel = msg.velocity

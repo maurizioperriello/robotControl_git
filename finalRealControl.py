@@ -11,10 +11,10 @@ import numpy as np
 from time import sleep
 from AI_real_class import AI
 
-#Filter
+#Filter AI
 action_cntr = 0
-speedVect_size = 50
-n_filteredAction = 6
+speedVect_size = 22
+n_filteredAction = 3
 speed_vect = [ [ 0.0 for _ in range(speedVect_size) ] 
                            for c in range(n_filteredAction) ]
 
@@ -33,6 +33,28 @@ def reset_speed_filter():
     action_cntr = 0
     speed_vect = [ [ 0.0 for _ in range(speedVect_size) ] 
                            for c in range(n_filteredAction) ]
+    
+#Filter wrist
+action_cntr_wrist = 0
+speedVect_size_wrist = 1
+speed_vect_wrist = [ [ 0.0 for _ in range(speedVect_size_wrist) ] 
+                           for c in range(3) ]
+
+def speed_filter_wrist(action):
+    global action_cntr_wrist
+    global speed_vect_wrist
+    index = action_cntr_wrist % speedVect_size_wrist
+    for i in range(3):
+        speed_vect_wrist[i][index] = action[i]
+    action_cntr_wrist += 1
+    return [ np.mean(speed_vect_wrist[i]) for i in range(3) ]
+    
+def reset_speed_filter_wrist():
+    global action_cntr_wrist
+    global speed_vect_wrist
+    action_cntr_wrist = 0
+    speed_vect_wrist = [ [ 0.0 for _ in range(speedVect_size) ] 
+                           for c in range(3) ]
     
 
 if __name__ == '__main__':
@@ -53,17 +75,38 @@ if __name__ == '__main__':
                                      ['red', 'green', 'blue', 'yellow', 'grey'] ],
                     'completed' : [ False for _ in range(6) ]}
         """
-        project = { 'cube' : ['red', 'green', 'blue', 'yellow'],
-                    'position' : [ [0.20,-0.20,0.05], [0.20,-0.20,0.10],
-                                   [0.20,-0.20,0.15], [0.20,-0.20,0.20] ],
-                    'priorities' : [ [], ['red', 'blue'], ['red'], ['red', 'blue', 'green']],
-                    'completed' : [ False for _ in range(6) ]}
         
+        dz = 0.05 + 0.195
+        """
+        project = { 'cube' : ['red', 'green', 'blue', 'yellow'],
+                    'position' : [ [0.22, -0.014, 0.05+dz], [0.22, -0.014, 0.10+dz],
+                                   [0.22, -0.014, 0.30+dz], [0.22, -0.014, 0.20+dz] ],
+                    'priorities' : [ [], ['red', 'blue'], ['red'], ['red', 'blue', 'green']],
+                    'completed' : [ False for _ in range(4) ]}
+        """
+        project = { 'cube' : ['red', 'green', 'blue', 'yellow'],
+                    'position' : [ [0.30, -0.014, 0.20+dz], [0.16, -0.014, 0.16+dz],
+                                   [0.10, -0.014, 0.40], [0.22, -0.014, 0.20] ],
+                    'priorities' : [ [], ['red', 'blue'], [], ['red', 'blue', 'green']],
+                    'completed' : [ False for _ in range(4) ]}
+                    
+                    #red_oldPos = [0.22, -0.014, 0.05+old_dz] old_new_z = 0.03
+                    #green_oldPos = [0.16, -0.014, 0.12+old_dz]
+                    #old_dz = 0.08 + 0.195
+        
+        """
+        #PER USARE NUOVI BLOCCHI LEGO!!!
+        project = { 'cube' : ['red', 'green', 'blue', 'yellow'],
+                    'position' : [ [0.30, -0.014, 0.03+dz], [0.16, -0.014, 0.40],
+                                   [0.16, -0.014, 0.03+dz], [0.22, -0.014, 0.20] ],
+                    'priorities' : [ [], ['red', 'blue'], [], ['red', 'blue', 'green']],
+                    'completed' : [ False for _ in range(4) ]}
+        """
         agent = AI(project=project)
         
         episode_n = 1
         
-        useGripper = False
+        useGripper = True
         
         for ep in range(episode_n):  
             if(rospy.is_shutdown()):
@@ -81,7 +124,7 @@ if __name__ == '__main__':
             pick = False #True se l'oggetto è stato prelevato
             v = np.zeros(6)
             
-            while(not done):
+            while 1:#(not done):
                 if(rospy.is_shutdown()):
                     break
                 
@@ -96,10 +139,12 @@ if __name__ == '__main__':
                     print('Stop:)')
                     v = np.zeros(6)
                     reset_speed_filter()
-                v = speed_filter(v)
+                    reset_speed_filter_wrist()
+                v[0:3] = speed_filter(v[0:3])
+                #v[0:3] = np.zeros(3)
                 agent.controller.robot_vel_publish(v)
                 agent.rate_sleep()
-                
+                #print(agent.controller.redCube_pos)
                 if doneRobot:
                     if useGripper:
                         agent.controller.commandGripper(pick, not pick)
@@ -124,7 +169,7 @@ if __name__ == '__main__':
             print('------------------------',
                   f'End of episode {ep}',
                   '------------------------', sep='\n')
-            sleep(3)
+            #sleep(3)
             
     except rospy.ROSInterruptException:
         pass

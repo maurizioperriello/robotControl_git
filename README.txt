@@ -6,6 +6,9 @@ FILE:
 
 
 CHANGELOG:
+7.0:
+	-Final, I did it!
+
 6.2:
 	-Miglioramenti dei vari scripts per il robot reale
 

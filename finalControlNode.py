@@ -76,7 +76,7 @@ if __name__ == '__main__':
             print('------------------------',
                   f'End of episode {ep}',
                   '------------------------', sep='\n')
-            sleep(3)
+            sleep(1)
             
     except rospy.ROSInterruptException:
         pass

@@ -344,7 +344,7 @@ if __name__ == '__main__':
         cancelMemory = False
         
         #noise start at 0.1
-        noise = 0.01
+        noise = 0.0
         
         reductionFactor = 0.5
         
@@ -484,7 +484,7 @@ if __name__ == '__main__':
                 if(count % 300 == 0 or count == 1):
                     #controller.billHandPos_publishFun([2, 0, 0, 0])
                     billMove = True
-                    billHandVect = []
+                    #billHandVect = []
                     hand = choice([0,1])
                     #[ VEDI OLDfun.py per versione alternativa di "BILL CODE" ]
                     if hand==0: 
@@ -550,7 +550,7 @@ if __name__ == '__main__':
                 restoreContext(__saved_context__)
             """       
             
-        billPos_df = pd.DataFrame(list(zip(billHandPos_v, billHandVect)),
+        billPos_df = pd.DataFrame(list(zip(billHandPos_v, billHand_obj)),
                                      columns=['position', 'target'])
         billPos_df.to_csv('tmp/bill.csv')
         

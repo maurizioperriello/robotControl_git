@@ -14,6 +14,7 @@ from ddpg_classes import Agent
 import pandas as pd
 import math
 from utils import HTrans, compute_ur_jacobian
+import shutil
 
 
 def debugInfo(n):
@@ -75,13 +76,13 @@ def observe(ctrl, action):
     EEvel = np.matmul(R_mat_ur10e, EEvel)
     print(f'vel_J = {EEvel}')
     """
-    
+    """
     T_d = np.matrix(np.identity(4), copy=False)
     T_d[2,3] = -0.195
     EE_pos.append(1.0)
     EE_pos = np.dot(T_d, EE_pos)
     EE_pos = [ EE_pos[0,i] for i in range(3) ]
-
+    """
     for j in range(3):
         obs.append(target_pos[j])
         
@@ -112,13 +113,16 @@ def give_reward(d_history, ctrl, v, old_v):
     
     objPos = np.array(ctrl.target_pos).copy()
     EEpos = ctrl.EE_pos.copy()
+    """
     T_d = np.matrix(np.identity(4), copy=False)
     T_d[2,3] = -0.195
     EEpos.append(1.0)
     EEpos = np.dot(T_d, EEpos)
     EEpos = [ EEpos[0,i] for i in range(3) ]
+    """
     robot_acc = np.array(ctrl.robot_acc).copy()
-    acc_r = 3*np.linalg.norm(robot_acc[0:3]) #dopo 80k ep si passa da 0.5 a 4
+    acc_r = 5*np.linalg.norm(robot_acc[0:3]) #dopo 80k ep si passa da 0.5 a 4
+
     
     d = 0
     for i in range(np.size(objPos)):
@@ -130,12 +134,12 @@ def give_reward(d_history, ctrl, v, old_v):
     c = [ 1.5 if dv[i]>max_dv else 0 for i in range(3) ]
     r = sum( [ x*y for (x, y) in zip(c, dv) ] )
     """
-    r2 = 10*np.linalg.norm(v) #dopo 80k ep si passa da 2 a 10
+    r2 = 15*np.linalg.norm(v) #dopo 80k ep si passa da 2 a 10
     
     table_r = 100 if EEpos[2] < 0.05 else 0 #reward per evitare che l'EE tocchi il tavolo
     
-    a = 22
-    reward = - a*d - r2 - acc_r - table_r
+    a = 25 #prima era 20
+    reward = - a*d - table_r # - r2 - acc_r - table_r
     #print(f'acc_r = {acc_r} \n r = {a*d} \n v_r = {r2}')
     d_history.append(d)
     #d_history non viene utilizzato, ma può tornare utile per visualizzare
@@ -183,18 +187,24 @@ def check_target(ctrl, count):
     #per farlo, bisogna arrivare in prossimità del target (sfera bianca) con
     #una velocità inferiore o ugule a 0.1 m/s
     delta = 0.02 
-    d_goal = 0.1
+    d_goal = 0.02
     
-    if count>=10000 and count<=19999:
-        d_goal = 0.08
-    elif count>=20000 and count<=28000:
-        d_goal = 0.06
-    elif count>=28001 and count<=34000:
-        d_goal = 0.04
-    elif count>=34001:
+    """
+    if count>=15_000 and count<=30_000:
         d_goal = 0.02
-    
+    elif count>=30_001: # and count<=2000:
+        d_goal = 0.01
+    """
+    """
+    elif count>=2001 and count<=3000:
+        d_goal = 0.03
+    elif count>=3001 and count<=4000:
+        d_goal = 0.02
+    elif count>=4001:
+        d_goal = 0.01
+    """
     EEpos = ctrl.EE_pos.copy() #se possibile, si effettua sempre la copia dei valori della classe controller
+    """
     T_d = np.matrix(np.identity(4), copy=False)
     T_d[2,3] = -0.195
     #print(f'EE_pos = {EEpos}')
@@ -202,6 +212,7 @@ def check_target(ctrl, count):
     EEpos = np.dot(T_d, EEpos)
     EEpos = [ EEpos[0,i] for i in range(3) ]
     #print(f'tcp_pos = {EEpos}')
+    """
     objPos = np.array(ctrl.target_pos).copy()
     finalLinks = ctrl.finalLinks_spatialPos.copy()
     joints_spatialPos = ctrl.joints_spatialPos
@@ -305,12 +316,12 @@ if __name__ == '__main__':
         load_checkpoint = True #se True, carica i pesi e la memoria salvati
         evaluate = False #se True, non effettua il learn né il salvataggio dei dati
         select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni
-        changeInitialPosition = True
+        changeInitialPosition = False
         
         cancel_rememberIteration = True #se True, consente di salvare sempre tutte le iterazioni, anche quando non avviene correttamente il reset
-        avoidMemory = True
+        avoidMemory = False
         
-        reduction_factor = 0.5 #fattore di riduzione delle velocità del robot
+        reduction_factor = 0.2 #fattore di riduzione delle velocità del robot
                 
         #meglio inserire anche theta_joints, per mantenere la proprietà di Markov                         
         observation_shape = (12,)  # [target_x-EEx, target_y-EEy, target_z-EEz,
@@ -346,7 +357,7 @@ if __name__ == '__main__':
             w += 1
         
         best_score = 0
-        n_games = 42_000
+        n_games = 40_000
         n_games += 1 #per far si che al penultimo game si salvi la memoria (viene salvata ogn 100 episode, per non rallentare troppo il processo)
         limit_count = 1500 #numero di iterazioni massime per episode
         score_history = []
@@ -396,12 +407,42 @@ if __name__ == '__main__':
         
         max_x = 0.4 #0.5
         max_y = 0.4
-        max_z = 0.35
+        max_z = 0.4
         
         pick_conf = reset_pos_robot
         
+        pick_vector = [[0.3, 0.409, 0.042],
+                       [0.35, 0.301, 0.035]]
+        place_vector = [[0.30, -0.014, 0.03],
+                        [0.16, -0.014, 0.16]]
+        
+        src = [ 'tmp/ddpg_simplerSearcher_newEnv/actor_ddpg.h5',
+                'tmp/ddpg_simplerSearcher_newEnv/critic_ddpg.h5',
+                'tmp/ddpg_simplerSearcher_newEnv/target_actor_ddpg.h5',
+                'tmp/ddpg_simplerSearcher_newEnv/target_critic_ddpg.h5' ]
+        
         #routine di training/evalutation
-        for ep in range(n_games):
+        for ep in range(n_games):            
+            """
+            if ep == 14999:
+                dst =  'tmp/checkpoint_tcp_searcher/EE_d6'
+                for s in src:
+                    shutil.copy(s, dst)
+            elif ep == 29999:
+                dst =  'tmp/checkpoint_tcp_searcher/EE_d3'
+                for s in src:
+                    shutil.copy(s, dst)
+            
+            elif ep == 24000:
+                dst =  'tmp/checkpoint_tcp_searcher/d3'
+                for s in src:
+                    shutil.copy(s, dst)
+            elif ep == 26000:
+                dst =  'tmp/checkpoint_tcp_searcher/d2'
+                for s in src:
+                    shutil.copy(s, dst)
+            """   
+            
             if(rospy.is_shutdown()):
                 break
             
@@ -483,16 +524,23 @@ if __name__ == '__main__':
             print(f'OLD = {object_position}')
             #New Env (senza tavolo)
             if pick:
-                target_x = round(uniform(0.0, 0.40), 2) #round(uniform(0.0, 0.50), 2)
+                target_x = round(uniform(0.1, 0.40), 2) #round(uniform(0.0, 0.50), 2)
                 target_y = round(uniform(-0.4, 0.4), 2) #round(uniform(-0.4, 0.4), 2)
-                target_z = 0.07
+                target_z = 0.20
             else:
-                target_x = target_x + round(uniform(0.20, 0.35), 2) #round(uniform(0.20, 0.45), 2)
+                target_x = target_x + round(uniform(0.15, 0.30), 2) #round(uniform(0.20, 0.45), 2)
                 target_y = target_y + round(uniform(0.0, 0.2), 2)*sign(target_y) #(0.0, 0.2)
-                target_z = target_z + round(uniform(0.08, 0.30), 2)
+                target_z = target_z + round(uniform(0.0, 0.2), 2)
             object_position = [ target_x if target_x<max_x else max_x,
                                 target_y if abs(target_y)<max_y else max_y*sign(target_y),
                                 target_z if target_z<max_z else max_z ]
+            """
+            if pick:
+                object_position = choice(pick_vector)
+            else:
+                object_position = choice(place_vector)
+            """
+            
             print(f'NEW = {object_position}')
             controller.target_pos_publish(object_position)
             rate.sleep()
@@ -506,7 +554,7 @@ if __name__ == '__main__':
             done = False #terminal flag
             score = 0.0 #punteggio totale dell'episode
             
-            count = 0 #numero delle iterazione dell'episode
+            count = 0 #numero delle iterazioni dell'episode
             
             old_reward = -1_000_000_000 #reward del ciclo precedente, utilizzato per selezionare quali iterazioni salvare e quali no
             old_action = np.zeros(3) 
@@ -551,7 +599,9 @@ if __name__ == '__main__':
                     #ogni 50 iterazioni si effettua il learning, per non rallentare troppo la simulazione
                     agent.learn()
                 
-                observation = observation_ #lo stato futuro diventa quello presente
+                #observation = observation_ #lo stato futuro diventa quello presente
+                
+                observation = list(np.array(observation_).copy())
                 
                 print(count)
                 if(count == limit_count):

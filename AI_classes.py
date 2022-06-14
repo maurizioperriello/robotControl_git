@@ -310,9 +310,9 @@ class AI:
         self.dt = 0.05
         
         #Velocity Filter Parameters
-        self.useFilter = False
+        self.useFilter = True
         self.action_cntr = 0
-        self.speedVect_size = 10
+        self.speedVect_size = 20
         self.speed_vect = [ [ 0.0 for _ in range(self.speedVect_size) ] 
                                for c in range(3) ]
         
@@ -321,12 +321,12 @@ class AI:
         self.searcher = Agent(input_dims=inputDim_searcher, n_actions=3, fc1=fc1_searcher,
                               fc2=fc2_searcher, fc3=fc3_searcher,
                               chkpt_dir=modelPath_searcher,
-                              memory_dir='tmp/memory_simplerSearcher',
+                              memory_dir='goodW/searcher',
                               reduction_factor=self.reduction_factor)
         self.avoider = Agent(input_dims=inputDim_avoider, n_actions=3, fc1=fc1_avoider,
                               fc2=fc2_avoider, fc3=fc3_avoider,
                               chkpt_dir=modelPath_avoider,
-                              memory_dir='tmp/memory_billAvoider',
+                              memory_dir='goodW/avoider',
                               reduction_factor=self.reduction_factor)
         self.controller = Controller()
         self.rate = self.controller.rate

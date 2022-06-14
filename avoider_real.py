@@ -103,8 +103,8 @@ def findV456(ctrl):
 
 #Filter
 action_cntr = 0
-speedVect_size = 50
-n_filteredAction = 6
+speedVect_size = 20
+n_filteredAction = 3
 speed_vect = [ [ 0.0 for _ in range(speedVect_size) ] 
                            for c in range(n_filteredAction) ]
 
@@ -125,7 +125,6 @@ def reset_speed_filter():
                            for c in range(n_filteredAction) ]
 
 def reset_robot_conf(ctrl):
-    #TODO: controllare dir
     th90rad = -90*2*pi/360
     start_robot_conf = [0.0, -1.57, 1.57, -1.57, 4.71, 2.36]
     k = 1
@@ -232,7 +231,7 @@ if __name__ == '__main__':
                     v[ii] = other_red_factor*action[ii]
                 v[3], v[4], v[5] = findV456(controller)
                 
-                v = reset_robot_conf(controller)
+                #v = reset_robot_conf(controller)
                 
                 if useFilter:
                     v = speed_filter(v)

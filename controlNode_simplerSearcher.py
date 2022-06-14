@@ -74,7 +74,7 @@ def give_reward(d_history, ctrl, v, old_v):
     objPos = np.array(ctrl.target_pos).copy()
     EEpos = ctrl.EE_pos.copy()
     robot_acc = np.array(ctrl.robot_acc).copy()
-    acc_r = 5*np.linalg.norm(robot_acc[0:3]) #dopo 80k ep si passa da 0.5 a 4
+    acc_r = 3*np.linalg.norm(robot_acc[0:3]) #dopo 80k ep si passa da 0.5 a 4
     
     d = 0
     for i in range(np.size(objPos)):
@@ -86,12 +86,12 @@ def give_reward(d_history, ctrl, v, old_v):
     c = [ 1.5 if dv[i]>max_dv else 0 for i in range(3) ]
     r = sum( [ x*y for (x, y) in zip(c, dv) ] )
     """
-    r2 = 15*np.linalg.norm(v) #dopo 80k ep si passa da 2 a 10
+    r2 = 10*np.linalg.norm(v) #dopo 80k ep si passa da 2 a 10
     
-    table_r = 100 if EEpos[2] < 0.05 else 0 #reward per evitare che l'EE tocchi il tavolo
+    table_r = 100 if EEpos[2] < 0.02 else 0 #reward per evitare che l'EE tocchi il tavolo
     
-    a = 20
-    reward = - a*d - r2 - acc_r - table_r
+    a = 25 #prima era 20
+    reward = - a*d - table_r # - r2 - acc_r - table_r #i coeffficienti erano: 20, 15, 5
     #print(f'acc_r = {acc_r} \n r = {a*d} \n v_r = {r2}')
     d_history.append(d)
     #d_history non viene utilizzato, ma può tornare utile per visualizzare
@@ -139,7 +139,7 @@ def check_target(ctrl):
     #per farlo, bisogna arrivare in prossimità del target (sfera bianca) con
     #una velocità inferiore o ugule a 0.1 m/s
     delta = 0.02 
-    d_goal = 0.15
+    d_goal = 0.02
     
     EEpos = ctrl.EE_pos.copy() #se possibile, si effettua sempre la copia dei valori della classe controller
     objPos = np.array(ctrl.target_pos).copy()
@@ -242,22 +242,24 @@ if __name__ == '__main__':
         #######################
         
         append_data = False
-        load_checkpoint = True #se True, carica i pesi e la memoria salvati
+        load_checkpoint = False #se True, carica i pesi e la memoria salvati
         evaluate = False #se True, non effettua il learn né il salvataggio dei dati
         select_remember = False #se vero, permette di salvare in memoria solo determinate transizioni
-        changeInitialPosition = True
+        changeInitialPosition = False
         
-        cancel_rememberIteration = True #se True, consente di salvare sempre tutte le iterazioni, anche quando non avviene correttamente il reset
-        useMemory = False
+        cancel_rememberIteration = False #se True, consente di salvare sempre tutte le iterazioni, anche quando non avviene correttamente il reset
+        avoidMemory = False
         
-        reduction_factor = 0.5 #fattore di riduzione delle velocità del robot
+        useHER = True #se True, consente la modifica di transizioni da inserire in memoria
+        
+        reduction_factor = 0.2 #fattore di riduzione delle velocità del robot
                 
         #meglio inserire anche theta_joints, per mantenere la proprietà di Markov                         
         observation_shape = (12,)  # [target_x-EEx, target_y-EEy, target_z-EEz,
                                   #  EE_vx, EE_vy, EE_vz]  
         
         #start at 0.1
-        noise = 0.15
+        noise = 0.05
               
         agent = Agent(input_dims=observation_shape, n_actions=3, noise=noise,
                       chkpt_dir='tmp/ddpg_simplerSearcher_newEnv',
@@ -286,14 +288,14 @@ if __name__ == '__main__':
             w += 1
         
         best_score = 0
-        n_games = 35_000
+        n_games = 40_000
         n_games += 1 #per far si che al penultimo game si salvi la memoria (viene salvata ogn 100 episode, per non rallentare troppo il processo)
         limit_count = 1500 #numero di iterazioni massime per episode
         score_history = []
         success_history = []
         config_history = []
     
-        loadMemory = evaluate or useMemory
+        loadMemory = evaluate or avoidMemory
     
         #routine di caricamento dei pesi e della memoria
         #per poter caricare i dati è necessario prima inizializzare la rete,
@@ -327,14 +329,10 @@ if __name__ == '__main__':
         agent.memory.terminal_memory = np.zeros(1_000_000, dtype=np.bool)
         """
         
-        pick = True
-        
         #routine di training/evalutation
         for ep in range(n_games):
             if(rospy.is_shutdown()):
                 break
-            
-            pick = not pick
             
             #Reset Routine
             controller.robot_vel_publish(start_vel_robot)
@@ -342,8 +340,8 @@ if __name__ == '__main__':
             
             #controller.table_publish(resetTablePos)
             #rate.sleep()
-            if pick:
-                controller.robot_pos_publish()
+            
+            controller.robot_pos_publish()
             #rate.sleep()
             resetCompleted = False
             remember_iteration = True #se il sistema è bloccato, la successiva iterazione non verrà salvata
@@ -352,7 +350,7 @@ if __name__ == '__main__':
             #se entro 500000 iterazioni il posizionamento non è stato completato
             #(e, quindi, il robot è quasi sicuramente bloccato), allora si continua
             #comunque
-            while(not resetCompleted or not pick):
+            while(not resetCompleted):
                 r_pos = np.array(controller.robot_pos).copy() #robot position
                 resetCompleted = np.array(
                     [ r_pos[i]>=reset_pos_robot[i]-0.1 and r_pos[i]<=reset_pos_robot[i]+0.1 for i in range(6) ]
@@ -360,7 +358,7 @@ if __name__ == '__main__':
                 c += 1
                 if(c == 500_000):
                     break;
-            if(resetCompleted or not pick):
+            if(resetCompleted):
                 remember_iteration = True
             else:
                 remember_iteration = False
@@ -373,8 +371,9 @@ if __name__ == '__main__':
             """   
             change = choice([0,1])
             
-            if changeInitialPosition and change and not pick:
+            if changeInitialPosition and change:
                 startConfig = startPosition[choice(range(len(startPosition)))]
+                print(startConfig)
                 controller.robot_pos_publish(startConfig, False)
                 setConfigCompleted = False
                 c = 0
@@ -395,9 +394,9 @@ if __name__ == '__main__':
             """
             
             #New Env (senza tavolo)
-            target_x = round(uniform(0.0, 0.65), 2)
-            target_y = round(uniform(-0.5, 0.5), 2)
-            target_z = round(uniform(0.0, 0.45), 2)
+            target_x = round(uniform(0.1, 0.4), 2)
+            target_y = round(uniform(-0.4, 0.4), 2)
+            target_z = round(uniform(0.20, 0.40), 2)
             object_position = [target_x, target_y, target_z]
             
             controller.target_pos_publish(object_position)
@@ -411,6 +410,7 @@ if __name__ == '__main__':
             score = 0.0 #punteggio totale dell'episode
             
             count = 0 #numero delle iterazione dell'episode
+            countHER = 0 #numero dell'iterazione dell'episode che non si resetta alla sua fine
             
             old_reward = -1_000_000_000 #reward del ciclo precedente, utilizzato per selezionare quali iterazioni salvare e quali no
             old_action = np.zeros(3) 
@@ -422,6 +422,7 @@ if __name__ == '__main__':
                     break;
                 
                 count += 1    
+                countHER += 1
                 
                 v = np.zeros(6)
                 action = agent.choose_action(observation, evaluate) #calcolo dell'azione
@@ -445,6 +446,25 @@ if __name__ == '__main__':
                         if(done==1 or reward>old_reward):
                             #il salvataggio in memoria si effettua solo se il punteggio aumenta rispetto all'iterazione precedente o se si è raggiunto il target
                             agent.remember(observation, action, reward, observation_, done)
+                    elif useHER:
+                        if countHER==3300:
+                            countHER = 0
+                            EE_pos = observation_[6:9]
+                            EE_pos = [ EE_pos[i]+0.001 for i in range(3) ]
+                            checkPos = [ EE_pos[0]>=0.1 and EE_pos[0]<=0.4,
+                                         EE_pos[1]>=-0.4 and EE_pos[1]<=0.4,
+                                         EE_pos[2]>=0.2 and EE_pos[2]<=0.4 ]
+                            check = np.array(checkPos).all()
+                            if done==0 and check:
+                                newObs = list(np.array(observation_).copy())
+                                newTarget = EE_pos
+                                newObs[0:3] = newTarget
+                                newObs[3:6] = [0.001, 0.001, 0.001]    
+                                agent.remember(observation, action, -0.001, newObs, 1)
+                            else:
+                                agent.remember(observation, action, reward, observation_, done)
+                        else:
+                            agent.remember(observation, action, reward, observation_, done)
                     else:
                         agent.remember(observation, action, reward, observation_, done)    
                 
@@ -456,6 +476,8 @@ if __name__ == '__main__':
                     agent.learn()
                 
                 observation = observation_ #lo stato futuro diventa quello presente
+                
+                #observation = list(np.array(observation_).copy())
                 
                 print(count)
                 if(count == limit_count):
